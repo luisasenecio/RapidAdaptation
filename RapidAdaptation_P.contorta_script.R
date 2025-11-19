@@ -14,6 +14,10 @@
 #' second height measurements taken on  9th October 2025
 
 
+#' Biological questions:
+#' Do provenance and budburst/budset/height/root:shoot ratio correlate?
+#' first need to know distribution of all variables and traits
+
 # load libraries & import data --------------------------------------------
 
 library(readxl)
@@ -34,6 +38,7 @@ colnames(data)
 #' "Offset"               "Status 22/09/2025"    "Size"                
 #' "DBB (mm)...25"        "Date measured DBB"    "Height (cm)...27"    
 #' "Date measured"       
+
 
 
 # TO DO:
