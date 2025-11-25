@@ -111,6 +111,11 @@ LP <- data %>%
   mutate(across(c(DBB_1, height_1, needle_1, needle_2, height_2, DBB_2),as.numeric))
     # NAs introduced by coercion
 
+  # TO DO:
+  #' remove dead trees
+
+
+
 # CONVERT INTO JULIAN DAYS
   # 
   # probably won't work because later burbursts will have smaller Julian day values?
