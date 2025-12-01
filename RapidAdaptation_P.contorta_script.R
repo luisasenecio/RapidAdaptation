@@ -20,8 +20,12 @@
 
 # load libraries & import data --------------------------------------------
 library(dplyr)
-library(dplyr)
+library(ggplot2)
+library(tidyr)
 library(readxl)
+library(tidyverse)
+
+
 data <- read_excel("P:/07793_newLEAF/Workfiles/WP4/RapidAdaptationTrial_MasterSheet.xlsx", sheet = "Pinus contorta")
 
 head(data)
@@ -85,11 +89,6 @@ unique(data$`Date of budset`)
 #'    -> change to date_height_2
 #'    -> change to Julian days       
 
-# TO DO:
-#' change date to days since... (especially for budburst and budset measurements)
-#' check range & distribution of numerical values
-#' remove NAs?
-#' distinguish better between first and second measurements (e.g., DBB_1, DBB_2)
 
 LP <- data %>% 
   rename(
@@ -111,14 +110,7 @@ LP <- data %>%
   mutate(across(c(DBB_1, height_1, needle_1, needle_2, height_2, DBB_2),as.numeric))
     # NAs introduced by coercion
 
-  # TO DO:
-  #' remove dead trees
-
-
-
 # CONVERT INTO JULIAN DAYS
-  # 
-  # probably won't work because later burbursts will have smaller Julian day values?
 
 # Budset
 range(LP$date_budset, na.rm = T)
@@ -137,20 +129,187 @@ range(LP$date_budburst, na.rm = T)
 LP$date_budburst <- as.Date(LP$date_budburst)
 LP$Julian_budburst <- julian(LP$date_budburst, origin = as.Date("2024-02-01"))
 
-# check with Annika if this makes sense
-#' do both budset and budburst need to have the same origin day?
-#' budset starts earlier so if tree A budset and tree B budburst are on same calendar day, Julian day would be different
+
+# Data exploration 
+colnames(LP)
+
+# STATUS ------------------------------------------------------------------
+
+LP_long_status <- LP %>% 
+  pivot_longer(
+    cols = c(status_1, status_2),
+    names_to = "status_group",
+    values_to = "status"
+  ) %>% 
+  mutate(year = case_when(
+      status_group == "status_1" ~ 2024,
+      status_group == "status_2" ~ 2025
+  ))
 
 
-# Data exploration --------------------------------------------------------
+counts_status <- LP_long_status %>% 
+  filter(!is.na(status)) %>% 
+  group_by(status, status_group) %>% 
+  summarise(n=n(), .groups="drop") %>% 
+  mutate(x_pos = case_when(
+    status_group == "status_1" & status == "alive" ~ 1 - 0.2,
+    status_group == "status_1" & status == "dead"  ~ 1 + 0.2,
+    status_group == "status_2" & status == "alive" ~ 2 - 0.2,
+    status_group == "status_2" & status == "dead"  ~ 2 + 0.2
+  ),
+  y_pos = n + 5)
 
 
-sum(is.na(data$`DBB (mm)...13`))
-sum(data$`DBB (mm)...13` == "na", na.rm =T)
-  # 27
-sum(is.na(LP$DBB_1))
-  # 27
+ggplot(LP_long_status, aes(x = factor(year), fill = status)) +
+  geom_bar(alpha=0.9,position = "dodge") +
+  geom_text(
+    data = counts_status, 
+    aes(x=x_pos, y=y_pos,label = n),
+    inherit.aes=F,
+    vjust=-1
+  )+
+  theme_minimal() +
+  labs(title = "Tree status in 2024 and 2025", x = "Year", y = "Count") +
+  theme(
+    legend.position = c(0.95,1),
+    legend.justification = c("right", "top")
+  ) +
+  scale_fill_manual(
+    values = c("dead" = "steelblue", "alive" = "tomato")
+   ) +
+  labs(fill = "Status")
+
+#' make histograms of DBB, height, budburst & budset?
+#' across all blocks or separated by blocks?
+
+
+# DBB ------------------------------------------------------------------ 
+LP_long_DBB <- LP %>%
+  pivot_longer(
+    cols = c(DBB_1, DBB_2),
+    names_to = "DBB_year",
+    values_to = "DBB"
+  )
+
+counts <- LP_long_DBB %>% 
+  filter(!is.na(DBB)) %>% 
+  group_by(DBB_year) %>% 
+  summarise(n=n(), .groups="drop") %>% 
+  mutate(x_pos =ifelse(DBB_year == "DBB_1",0.5,2.5),
+         y_pos=20)
+
+# calculate median heights
+median_DBB <- LP_long_DBB %>% 
+  filter(!is.na(DBB)) %>% 
+  group_by(DBB_year) %>% 
+  summarise(med = median(DBB), .groups="drop")
+
+# comparative histogram
+ggplot(LP_long_DBB, aes(x=DBB, fill = DBB_year)) +
+  geom_histogram(alpha=0.8, position = "identity") +
+  geom_text(
+    data = counts, 
+    aes(x=x_pos, y=15,label = paste("n =", n), fill=NULL),
+    position = position_dodge(width=1),
+    inherit.aes=F,
+    vjust=-1
+  )+
+  geom_vline(
+    data = median_DBB,
+    aes(xintercept = med, color =DBB_year),
+    linewidth = 1,
+    linetype = "dashed",
+    show.legend = FALSE
+  ) +
+  scale_color_manual(
+    values=c(
+      "DBB_1" = "steelblue4",
+      "DBB_2" = "tomato2"
+    )
+  ) +
+  scale_x_continuous(breaks = 0:5) +
+  labs(title = "DBB in 2024", x = "DBB (cm)") +
+  labs(
+    title = "DBB in 2024 and 2025",
+    x = "DBB (cm)"
+  ) +
+  scale_fill_manual(
+    name = "Year",
+    values = c("DBB_1" = "steelblue", "DBB_2" = "tomato"),
+    labels = c("DBB_1" = "2024", "DBB_2" = "2025")
+  )
+
+# 296 NAs
+
 
 range(LP$DBB_1, na.rm = T)
-  # 0.12 - 0.94
+range(LP$DBB_2, na.rm = T)
+sum(is.na(LP$DBB_1))
+sum(is.na(LP$DBB_2))
 
+# Height ------------------------------------------------------------------
+
+# long format + scaling into cm
+LP_long_height <- LP %>%
+  mutate(height_1_scaled = height_1 / 10) %>% 
+  pivot_longer(
+    cols = c(height_1_scaled, height_2),
+    names_to = "height_year",
+    values_to = "height"
+  )
+ 
+# count number of non-NA values & determine positions
+counts_height <- LP_long_height %>% 
+  filter(!is.na(height)) %>% 
+  group_by(height_year) %>% 
+  summarise(n=n(), .groups="drop") %>% 
+  mutate(x_pos =ifelse(height_year == "height_1_scaled",2.7,9),                  # position if height_year is height_1_scaled = 2.5, otherwise 9 (height_2)
+         y_pos=ifelse(height_year == "height_1_scaled", 50, 2))
+
+# calculate median heights
+median_height <- LP_long_height %>% 
+  filter(!is.na(height)) %>% 
+  group_by(height_year) %>% 
+  summarise(med = median(height), .groups="drop")
+
+# comparative histogram
+ggplot(LP_long_height, aes(x=height, fill = height_year)) +
+  geom_histogram(alpha=0.6, position = "identity")+ 
+  geom_text(
+    data = counts_height, 
+    aes(x=x_pos, y=y_pos,label = paste("n =", n), fill=NULL),
+    position = position_dodge(width=1),
+    inherit.aes=F,
+    vjust=-1
+  )+
+  geom_vline(
+    data = median_height,
+    aes(xintercept = med, color =height_year),
+    
+    linewidth = 1,
+    linetype = "dashed",
+    show.legend = FALSE
+  ) +
+  scale_color_manual(
+    values=c(
+      "height_1_scaled" = "black",
+      "height_2" = "tomato2"
+    )
+  ) +
+  labs(title = "Height in 2024", x = "Height (cm)") +
+  labs(
+    title = "Height in 2024 and 2025",
+    x = "Height (cm)"
+  ) +
+  scale_fill_manual(
+    name = "Year",
+    values = c("height_1_scaled" = "black", "height_2" = "tomato1"),
+    labels = c("height_1_scaled" = "2024", "height_2" = "2025")
+  )
+
+# 396 NAs
+
+range(LP$height_1, na.rm = T)
+range(LP$height_2, na.rm = T)
+sum(is.na(LP$height_1))
+sum(is.na(LP$height_2))
