@@ -24,7 +24,7 @@ library(ggplot2)
 library(tidyr)
 library(readxl)
 library(tidyverse)
-
+install.packages("colorpicker")
 
 data <- read_excel("P:/07793_newLEAF/Workfiles/WP4/RapidAdaptationTrial_MasterSheet.xlsx", sheet = "Pinus contorta")
 
@@ -177,10 +177,12 @@ ggplot(LP_long_status, aes(x = factor(year), fill = status)) +
   scale_fill_manual(
     values = c("dead" = "steelblue", "alive" = "tomato")
    ) +
-  labs(fill = "Status")
+  labs(fill = "Status") +
+  scale_y_continuous(limits=c(0,650))
 
-#' make histograms of DBB, height, budburst & budset?
-#' across all blocks or separated by blocks?
+dev.size()
+
+ggsave("status.png")
 
 
 # DBB ------------------------------------------------------------------ 
@@ -213,13 +215,21 @@ ggplot(LP_long_DBB, aes(x=DBB, fill = DBB_year)) +
     position = position_dodge(width=1),
     inherit.aes=F,
     vjust=-1
-  )+
+  ) +
   geom_vline(
     data = median_DBB,
     aes(xintercept = med, color =DBB_year),
     linewidth = 1,
     linetype = "dashed",
     show.legend = FALSE
+  ) +
+  geom_text(
+    data = median_DBB,
+    aes(x=med + 0.6, 
+        label = paste0("Median = ", round(med, 2))),
+    y = 250,
+    vjust=-0.5,
+    show.legend = F
   ) +
   scale_color_manual(
     values=c(
@@ -228,7 +238,7 @@ ggplot(LP_long_DBB, aes(x=DBB, fill = DBB_year)) +
     )
   ) +
   scale_x_continuous(breaks = 0:5) +
-  labs(title = "DBB in 2024", x = "DBB (cm)") +
+  labs(title = "DBB in 2024", x = "DBB (cm)", y ="Frequency") +
   labs(
     title = "DBB in 2024 and 2025",
     x = "DBB (cm)"
@@ -237,9 +247,11 @@ ggplot(LP_long_DBB, aes(x=DBB, fill = DBB_year)) +
     name = "Year",
     values = c("DBB_1" = "steelblue", "DBB_2" = "tomato"),
     labels = c("DBB_1" = "2024", "DBB_2" = "2025")
-  )
+  ) +
+  theme_minimal()
 
 # 296 NAs
+ggsave("DBB.png")
 
 
 range(LP$DBB_1, na.rm = T)
@@ -290,6 +302,14 @@ ggplot(LP_long_height, aes(x=height, fill = height_year)) +
     linetype = "dashed",
     show.legend = FALSE
   ) +
+  geom_text(
+    data = median_height,
+    aes(x=med + 2, 
+        label = paste0("Median = ", round(med, 2))),
+    y = 140,
+    vjust=-0.5,
+    show.legend = F
+  ) +
   scale_color_manual(
     values=c(
       "height_1_scaled" = "black",
@@ -299,17 +319,46 @@ ggplot(LP_long_height, aes(x=height, fill = height_year)) +
   labs(title = "Height in 2024", x = "Height (cm)") +
   labs(
     title = "Height in 2024 and 2025",
-    x = "Height (cm)"
+    x = "Height (cm)",
+    y="Frequency"
   ) +
   scale_fill_manual(
     name = "Year",
     values = c("height_1_scaled" = "black", "height_2" = "tomato1"),
     labels = c("height_1_scaled" = "2024", "height_2" = "2025")
-  )
+  ) +
+  theme_minimal()
+
 
 # 396 NAs
+ggsave("height.png")
 
 range(LP$height_1, na.rm = T)
 range(LP$height_2, na.rm = T)
 sum(is.na(LP$height_1))
 sum(is.na(LP$height_2))
+
+
+# Julian days -------------------------------------------------------------
+
+
+ggplot(LP, aes(x=Julian_budset)) +
+  geom_histogram() 
+sum(is.na(LP$Julian_budset))
+# 231 NAs
+
+ggplot(LP, aes(x = Provenance, y = Julian_budset)) +
+  geom_boxplot(fill = "steelblue") +
+  labs(title = "Budset Timing by Provenance",
+       x = "Provenance",
+       y = "Julian Day of Budset") +
+  theme_minimal()
+
+median(LP$Julian_budburst)
+
+ggplot(LP, aes(x=Julian_budburst, color="")) +
+  geom_histogram() 
+
+
+# colour by provenance/family?
+
