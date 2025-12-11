@@ -18,7 +18,7 @@
 #' Do provenance/family and budburst/budset/height/root:shoot ratio correlate?
 #' first need to know distribution of all variables and traits
 
-# load libraries & import data --------------------------------------------
+# Load libraries & import data --------------------------------------------
 library(dplyr)
 library(ggplot2)
 library(tidyr)
@@ -107,10 +107,12 @@ LP <- data %>%
     "date_height_2" = "Date measured"
   )  %>% 
   select(-c(`Height (cm)...14`, `Needle length 1 (cm)`, `Needle length 2 (cm)`, Ruler, Offset, Size)) %>% 
-  mutate(across(c(DBB_1, height_1, needle_1, needle_2, height_2, DBB_2),as.numeric))
+  mutate(across(c(DBB_1, height_1, needle_1, needle_2, height_2, DBB_2),as.numeric)) %>% 
+  mutate(height_2 = height_2*10)
     # NAs introduced by coercion
 
-# CONVERT INTO JULIAN DAYS
+
+# Convert into Julian days ------------------------------------------------
 
 # Budset
 range(LP$date_budset, na.rm = T)
@@ -141,7 +143,7 @@ TypeProvenanceCounts <- LP %>%
 StatusTypeProvenance <- LP %>% 
   count(Provenance, Type, status_2)
 
-# STATUS ------------------------------------------------------------------
+# Status across ------------------------------------------------------------------
 
 LP_long_status <- LP %>% 
   pivot_longer(
@@ -188,43 +190,58 @@ ggplot(LP_long_status, aes(x = factor(year), fill = status)) +
 
 ggsave("status.png")
 
-# STATUS BY TYPE
 
-StatusTypeCount <- LP %>% 
-  count(status_2, Type)
+# Status by Type ----------------------------------------------------------
 
-ggplot(StatusTypeCount, aes(x = status_2, y=n, fill=Type)) +
-  geom_col(position = position_dodge(width=0.9)) +
-  theme_minimal() +
-  labs(title = "Tree status by Type", x = "Status_2", y = "Count") +
-  theme(
-    legend.position = c(0.95,1),
-    legend.justification = c("right", "top")
+StatusType <- LP %>% 
+  group_by(Type) %>% 
+  summarise(
+    total = n(),
+    alive =sum(status_2 == "alive"),
+    dead = sum(status_2 == "dead"),
+    proportion_alive=alive/total
+  )
+
+ggplot(StatusType,
+       aes(x = Type, y = proportion_alive*100, fill = Type)) +
+  geom_col() +
+  labs(
+    x = "Type",
+    y = "Percentage alive"
   ) +
+  theme_minimal() +
   scale_fill_manual(
     values = c("Origin" = "#F08080", "Plantation" = "#528B8B", "Regeneration" = "#EEC900")
   )
 
-ggsave("StatusByType.png")
+ggsave("StatusProvenanceProportion.png")
 
-# STATUS BY PROVENANCE
 
-StatusProvenanceCounts <- LP %>% 
-  count(Provenance, status_2)
+# Status by Provenance ----------------------------------------------------
 
-ggplot(StatusTypeProvenance, aes(x = status_2, y=n, fill=Type)) +
-  geom_col(position = position_dodge(width=0.9)) +
-  theme_minimal() +
-  labs(title = "Tree status by Provenance", x = "Provenance", y = "Count") +
-  theme(
-    legend.position = c(0.95,1),
-    legend.justification = c("right", "top")
+StatusProvenance <- LP %>% 
+  group_by(Provenance) %>% 
+  summarise(
+    total = n(),
+    alive =sum(status_2 == "alive"),
+    dead = sum(status_2 == "dead"),
+    proportion_alive=alive/total
   )
 
-ggsave("StatusByProvenance.png")
+ggplot(StatusProvenance,
+       aes(x = Provenance, y = proportion_alive*100, fill = Provenance)) +
+  geom_col() +
+  labs(
+    x = "Provenance",
+    y = "Percentage alive"
+  ) +
+  theme_minimal()
+
+ggsave("StatusProvenanceProportion.png")
+
+# Status by Block ---------------------------------------------------------
 
 
-# STATUS BY BLOCK
 
 StatusBlockCounts <- LP %>% 
   count(Block, status_2)
@@ -235,11 +252,14 @@ ggplot(StatusBlockCounts, aes(x=factor(Block), y=n, fill=status_2)) +
   labs(
     x="Block", y="Count",
     fill="Status"
+  ) +
+  scale_fill_manual(values = c("dead" = "steelblue", "alive" = "tomato")
   ) 
 
 ggsave("StatusByBlock.png")
 
-# STATUS BY FAMILY
+# Status by Family --------------------------------------------------------
+
 
 length((LP$Family[LP$Family=="sub for LPNC - UKA4 - actually LPNC - UKA1"]))
 
@@ -254,26 +274,64 @@ LP_2 <- LP %>%
 length(unique(LP_2$Family))
   # 54 families
 
-StatusFamilyCounts <- LP_2 %>% 
-  count(Family, status_2)
+StatusFamily <- LP_2 %>% 
+  group_by(Family) %>% 
+  summarise(
+    total=n(),
+    alive=sum(status_2 == "alive"),
+    proportion_alive =alive/total) %>% 
+  ungroup()
 
-ggplot(StatusFamilyCounts, aes(x = Family, y = n, fill = status_2)) +
-  geom_col(position = position_dodge(width = 0.8)) +
+StatusFamily_sub <- StatusFamily %>% 
+  arrange(desc(proportion_alive)) %>% 
+  slice(c(1:10, (n()-9):n())) %>% 
+  mutate(percent_alive = proportion_alive*100)
+
+# top and bottom 10 families (based on percentage_alive)
+
+ggplot(StatusFamily_sub, aes(x = reorder(Family, percent_alive), y = percent_alive, fill=percent_alive)) +
+  geom_col() +
+  coord_flip() +
   labs(
-    title = "Tree Status per Family",
+    title="Top and Bottom 10 Families",
     x = "Family",
-    y = "Number of Trees",
-    fill = "Status"
+    y = "Alive (%)"
   ) +
-  theme_minimal() +
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1)  # Rotate family labels
-  )
+  theme(legend.position = "none") +
+  guides(fill="none") +
+  theme_minimal()
+
+ggsave("StatusByFamily.png")
 
 
-# Type distribution -------------------------------------------------------
+#  Distribution - Family -----------------------------------------------------
 
-colnames(LP)
+ #' 6 families have 50 ind.
+ #' most have 10 ind.
+ #' one has ~13 ind. 
+ #' one family has ~8 ind. 
+
+FamilyDist <- StatusFamily %>% 
+  count(total, name = "num_families")
+
+ggplot(FamilyDist,
+       aes(x=factor(total), y=num_families)) +
+  geom_col(fill="steelblue") +
+  labs(
+    x="Number of individuals per family",
+    y="Number of families"
+  ) +
+  theme_minimal()
+
+ggsave("FamilyDistribution.png")
+
+ggplot(StatusFamily, aes(x = reorder(Family, -total), y = total, fill=total)) +
+  geom_col() +
+  guides(fill="none") +
+  theme(axis.text.x = element_text(angle = 45))
+
+# Distribution -Type -------------------------------------------------------
+
 
 TypeCount <- LP %>% 
   group_by(Type) %>% 
@@ -286,7 +344,6 @@ TypeCount <- LP %>%
     )
   )
 
-# Distribution of Types
 ggplot(LP, aes(x=Type, fill=Type)) +
   geom_bar() +
   theme(legend.position = "none") +
@@ -300,7 +357,7 @@ ggsave("TypeDistribution.png")
 
 
 
-# Provenance distribution -------------------------------------------------
+# Distribution - Provenance -------------------------------------------------
 
 ProvenanceCount <- LP %>% 
   group_by(Provenance) %>% 
@@ -319,18 +376,21 @@ ggsave("ProvenanceDistribution.png")
 
 # DBB ------------------------------------------------------------------ 
 LP_long_DBB <- LP %>%
+  filter(status_1 == "alive" & status_2 == "alive") %>%    # remove trees that are dead but still have DBB measurements
   pivot_longer(
     cols = c(DBB_1, DBB_2),
     names_to = "DBB_year",
     values_to = "DBB"
   )
 
-counts <- LP_long_DBB %>% 
+DBB_counts <- LP_long_DBB %>% 
   filter(!is.na(DBB)) %>% 
   group_by(DBB_year) %>% 
   summarise(n=n(), .groups="drop") %>% 
-  mutate(x_pos =ifelse(DBB_year == "DBB_1", 0.9, 2.74),
+  mutate(x_pos =ifelse(DBB_year == "DBB_1", 1, 2.8),
          y_pos=20)
+
+  # 506 measurements
 
 # calculate median heights
 median_DBB <- LP_long_DBB %>% 
@@ -342,7 +402,7 @@ median_DBB <- LP_long_DBB %>%
 ggplot(LP_long_DBB, aes(x=DBB, fill = DBB_year)) +
   geom_histogram(alpha=0.8, position = "identity") +
   geom_text(
-    data = counts, 
+    data = DBB_counts, 
     aes(x=x_pos, y = 200,
         label = paste("n =", n), 
         fill=NULL),
@@ -372,17 +432,21 @@ ggplot(LP_long_DBB, aes(x=DBB, fill = DBB_year)) +
     )
   ) +
   scale_x_continuous(breaks = 0:5) +
-  labs(title = "DBB in 2024", x = "DBB (cm)", y ="Frequency") +
   labs(
     title = "DBB in 2024 and 2025",
-    x = "DBB (cm)"
+    x = "DBB (mm)",
+    y="Frequency"
   ) +
   scale_fill_manual(
     name = "Year",
     values = c("DBB_1" = "steelblue", "DBB_2" = "tomato"),
     labels = c("DBB_1" = "2024", "DBB_2" = "2025")
   ) +
-  theme_minimal()
+  theme_minimal() +
+  theme(
+    legend.position = c(0.95,1),
+    legend.justification = c("right", "top")
+  ) 
 
 # 296 NAs
 ggsave("DBB_histogram.png")
@@ -397,20 +461,41 @@ sum(is.na(LP$DBB_2))
 
 # long format + scaling into cm
 LP_long_height <- LP %>%
-  mutate(height_1_scaled = height_1 / 10) %>% 
+  filter(status_1 == "alive" & status_2 == "alive") %>%    # remove trees that are dead but still have height measurements
   pivot_longer(
-    cols = c(height_1_scaled, height_2),
+    cols = c( height_1, height_2),
     names_to = "height_year",
     values_to = "height"
   )
- 
+
+# if NAs not removed height_1 655 and height_2 509
+
+LP_long_height %>% 
+  filter(!is.na(height)) %>% 
+  count(height_year, name="n")
+  # height_1 506
+  # height_2 505
+
+# supposed to have ~626 for height_1 and ~510 for height_2
+
 # count number of non-NA values & determine positions
 counts_height <- LP_long_height %>% 
-  filter(!is.na(height)) %>% 
+  # filter(!is.na(height)) %>% 
   group_by(height_year) %>% 
   summarise(n=n(), .groups="drop") %>% 
-  mutate(x_pos =ifelse(height_year == "height_1_scaled",2.7,9),                  # position if height_year is height_1_scaled = 2.5, otherwise 9 (height_2)
-         y_pos=ifelse(height_year == "height_1_scaled", 50, 2))
+  mutate(x_pos =ifelse(height_year == "height_1",2.7,9),                  # position if height_year is height_1_scaled = 2.5, otherwise 9 (height_2)
+         y_pos=ifelse(height_year == "height_1", 50, 2))
+  # height_1 = 506 measurements
+  #' height_2 = 505 measurements
+  #' doesn't match with total alive 
+
+nrow(LP %>% filter(status_2 == "alive" & !is.na(height_2)))
+  #' 2024: 624 trees that are alive and have height measurement -> 2 missing height measurements
+  #' 2025: 509 trees are alive and have height measurement -> 1 missing height measurement
+
+nrow(LP %>%  filter(status_1=="alive"))
+nrow(LP %>%  filter(!is.na(height_1)))
+
 
 # calculate median heights
 median_height <- LP_long_height %>% 
@@ -450,10 +535,9 @@ ggplot(LP_long_height, aes(x=height, fill = height_year)) +
       "height_2" = "tomato2"
     )
   ) +
-  labs(title = "Height in 2024", x = "Height (cm)") +
   labs(
     title = "Height in 2024 and 2025",
-    x = "Height (cm)",
+    x = "Height (mm)",
     y="Frequency"
   ) +
   scale_fill_manual(
@@ -461,9 +545,83 @@ ggplot(LP_long_height, aes(x=height, fill = height_year)) +
     values = c("height_1_scaled" = "black", "height_2" = "tomato1"),
     labels = c("height_1_scaled" = "2024", "height_2" = "2025")
   ) +
-  theme_minimal()
+  theme_minimal()+
+  theme(
+    legend.position = c(0.95,1),
+    legend.justification = c("right", "top")
+  ) 
 
 ggsave("height.png")
+
+
+# height new attempt ------------------------------------------------------
+
+LP_height <- LP %>% 
+  filter(status_1 == "alive" & status_2 == "alive") %>% 
+  pivot_longer(
+    cols = c(height_1, height_2),
+    names_to = "year",
+    values_to = "height"
+  )
+
+
+median_heights <- LP_height %>% 
+  group_by(year) %>% 
+  summarise(median_height = median(height, na.rm = TRUE),
+            .groups = "drop")
+
+sum(is.na(LP_height$height))
+  # 1 NA value
+
+count_heights <- LP_height %>% 
+  filter(!is.na(height)) %>%
+  group_by(year) %>%
+  summarise(n = n(),
+            .groups = "drop")
+  
+  
+  
+ggplot(LP_height, aes(x = height, fill = year)) +
+  geom_histogram(alpha = 0.7, position = "identity", bins = 20) +
+  geom_vline(data = median_heights, aes(xintercept = median_height, color = year),
+             linetype = "dashed", size = 1, show.legend = FALSE) +
+  geom_text(data = median_heights,
+            aes(x = median_height, 
+                y = 150,
+                label = paste0("Median = ", round(median_height, 1))),
+            color = "black",
+            vjust = -1.2,
+            hjust = -0.2) +
+  labs(
+    x = "Height (mm)",
+    y = "Count",
+    fill = "Year"
+  ) +
+  theme_minimal() +
+  scale_fill_manual(
+    name = "Year",
+    values = c("height_1" = "black", "height_2" = "#9BCD9B"),
+    labels = c("height_1" = "2024", "height_2" = "2025")
+  ) +
+  scale_color_manual(values = c("height_1" = "grey", "height_2" = "#698B69")) +
+  theme(
+    legend.position = c(0.95,0.95),
+    legend.justification = c("right", "top")
+  ) 
+
+
+ggsave("height_histogram.png")
+
+
+c("#9BCD9B", "#698B69", "#6E8B3D")
+
+
+
+
+
+
+
+
 
 # 396 NAs
 # from dead trees
@@ -487,6 +645,29 @@ ggplot(LP, aes(x = Provenance, y = height_2, fill=Provenance)) +
 
 ggsave("height2_Provenance_boxplot.png")
 
+ # Statistical tests
+  # is height_2 normally distributed in each provenance lvel?
+ggplot(LP, aes(x = height_2, fill = Provenance)) +
+  geom_histogram(alpha = 0.6, bins = 20) +
+  facet_wrap(~ Provenance) +
+  labs(title = "Height 2 Distribution by Provenance", x = "Height 2", y = "Count") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+# Normality within groups (Shapiro-Wilk test)
+LP %>%
+  group_by(Provenance) %>%
+  summarise(shapiro_p = shapiro.test(height_2)$p.value)
+  # only North Coast is normally distributed
+
+kruskal.test(height_2 ~ Provenance, data = LP)
+   # highly significant
+
+pairwise.wilcox.test(LP$height_2, LP$Provenance, p.adjust.method = "BH")
+  #' NC-Alaska: sig
+  #' NC-Skeena: sig
+  #' Alaska-Skeena: not sig 
+  
 
 # Comparative boxplot: Height & Type
 # count how many values for height per type
@@ -505,16 +686,35 @@ ggplot(LP, aes(x = Type, y = height_2, fill=Type)) +
 
 ggsave("height2_Type_boxplot.png")
 
+# Statistical tests
+# is height_2 normally distributed in each type lvel?
+
+ggplot(LP, aes(x = height_2, fill = Type)) +
+  geom_histogram(alpha = 0.6, bins = 20) +
+  facet_wrap(~ Type) +
+  labs(title = "Height 2 Distribution by Type", x = "Height 2", y = "Count") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+# Normality within groups (Shapiro-Wilk test)
+LP %>%
+  group_by(Type) %>%
+  summarise(shapiro_p = shapiro.test(height_2)$p.value)
+# only Regen is normally distributed
+
+kruskal.test(height_2 ~ Type, data = LP)
+# highly significant
+
+pairwise.wilcox.test(LP$height_2, LP$Type, p.adjust.method = "BH")
+  #' all sig
 
 
-# Julian days -------------------------------------------------------------
 
-# BUDSET
-ggplot(LP, aes(x=Julian_budset)) +
-  geom_histogram() 
-sum(is.na(LP$Julian_budset))
-# 231 NAs
+# BUDSET -------------------------------------------------------------
 
+# PROVENANCE
+
+# Boxplot_ Budset x Provenance
 ggplot(LP, aes(x = Provenance, y = Julian_budset)) +
   geom_boxplot(fill = "steelblue") +
   labs(title = "Budset Timing by Provenance",
@@ -524,52 +724,220 @@ ggplot(LP, aes(x = Provenance, y = Julian_budset)) +
 
 ggsave("budset_boxplot.png")
 
-# Density plots to show distribution of budset between Origin type
+# Statistical tests
+# is budset normally distributed in each provenance level?
+
+ggplot(LP, aes(x = Julian_budset, fill = Provenance)) +
+  geom_histogram(alpha = 0.6, bins = 20) +
+  facet_wrap(~ Type) +
+  labs(title = "Height 2 Distribution by Provenance", x = "Budset (Julian days", y = "Count") +
+  theme_minimal() +
+  theme(legend.position = "none")
+  # nope
+
+# Normality within groups (Shapiro-Wilk test)
+LP %>%
+  group_by(Provenance) %>%
+  summarise(shapiro_p = shapiro.test(Julian_budset)$p.value)
+# nope
+
+kruskal.test(Julian_budset ~ Provenance, data = LP)
+# just about significant
+
+pairwise.wilcox.test(LP$Julian_budset, LP$Provenance, p.adjust.method = "BH")
+#' North Coast-Skeena: somewhat sig
+
+
+
+# Density plot: Budset x Provenance
+
+ggplot(LP, aes(x = Julian_budset, color = Provenance, fill = Provenance)) +
+  geom_density(alpha = 0.3) +
+  labs(x = "Budset (Julian days)",
+       y = "Density") +
+  theme_minimal() +
+  theme(
+    legend.position = c(0.95,1),
+    legend.justification = c("right", "top")
+  )
+
+ggsave("budset_provenance_density.png")
+
+# TYPE
+
+# Boxplot: Budset x Type
+
+ggplot(LP, aes(x = Type, y = Julian_budset)) +
+  geom_boxplot(fill = "steelblue") +
+  labs(x = "Type",
+       y = "Julian Day of Budset") +
+  theme_minimal()
+
+ggsave("budset_Type_boxplot.png")
+
+  # weird, origin has no values?
+range(LP$Julian_budset[LP$Type=="Origin"], na.rm = T)
+  # 1-125
+
+sum(is.na(LP$Julian_budset[LP$Type=="Origin"]))
+  # 115 NAs (trees without budset value) -> 185 trees have values
+  # 38% don't have budset values
+
+
+# Normality within groups (Shapiro-Wilk test)
+LP %>%
+  group_by(Type) %>%
+  summarise(shapiro_p = shapiro.test(Julian_budset)$p.value)
+# nope
+
+kruskal.test(Julian_budset ~ Type, data = LP)
+# very significant
+
+pairwise.wilcox.test(LP$Julian_budset, LP$Type, p.adjust.method = "BH")
+#' all but Regen-Plant = sig
+
+
+# Density plot: Budset x Type
+
 ggplot(LP, aes(x = Julian_budset, color = Type, fill = Type)) +
   geom_density(alpha = 0.3) +
   labs(x = "Budset (Julian days)",
-       title = "Density of Budset Days by Type") +
-  theme_minimal()
+       y="Density") +
+  theme_minimal() +
+  theme(
+  legend.position = c(0.95,1),
+  legend.justification = c("right", "top"))
 
-ggsave("budset_density.png")
+ggsave("budset_Type_density.png")
 
-# BUDBURST
 
-# Boxplot between Provenances
+# BUDBURST ----------------------------------------------------------------
+
+# PROVENANCE
+
+sum(is.na(LP$Julian_budburst[LP$Provenance=="North Coast"]))
+
+
+
+# Boxplot_ Budburst x Provenance
 ggplot(LP, aes(x = Provenance, y = Julian_budburst)) +
   geom_boxplot(fill = "steelblue") +
-  labs(title = "Budurst Timing by Provenance",
+  labs(
        x = "Provenance",
-       y = "Julian Day of Budurst") +
+       y = "Julian Day of Budburst") +
   theme_minimal()
 
-ggsave("budburst_boxplot.png")
+ggsave("budburst_Provenance_boxplot.png")
 
-# Histogram of all values, no grouping
-ggplot(LP, aes(x=Julian_budburst)) +
-  geom_histogram(fill="#79CDCD") +
-  labs(x="budburst (Julian days)", title ="Distribution of budburst days") +
-  theme_minimal()
+# Statistical tests
 
-ggsave("budset_histogram.png")
+# Normality within groups (Shapiro-Wilk test)
+LP %>%
+  group_by(Provenance) %>%
+  summarise(shapiro_p = shapiro.test(Julian_budburst)$p.value)
+# nope
 
-# Density plots to show distribution of budburst between Origin type
-ggplot(LP, aes(x = Julian_budburst, color = Type, fill = Type)) +
+kruskal.test(Julian_budburst ~ Provenance, data = LP)
+# significant
+
+pairwise.wilcox.test(LP$Julian_budburst, LP$Provenance, p.adjust.method = "BH")
+#' NC-Alaska: 0.013
+#' Skeena-NC: 0.01
+
+
+
+# Density plot: Budburst x Provenance
+
+ggplot(LP, aes(x = Julian_budburst, color = Provenance, fill = Provenance)) +
   geom_density(alpha = 0.3) +
   labs(x = "Budburst (Julian days)",
-       title = "Density of Budburst Days by Type") +
+       y = "Density") +
   theme_minimal() +
-  labs(
-    x="Density"
+  theme(
+    legend.position = c(0.95,1),
+    legend.justification = c("right", "top")
   )
 
-ggsave("budburst_density.png")
+ggsave("budburst_provenance_density.png")
+
+# TYPE
+
+# Boxplot: Budburst x Type
+
+ggplot(LP, aes(x = Type, y = Julian_budburst)) +
+  geom_boxplot(fill = "steelblue") +
+  labs(x = "Type",
+       y = "Julian Day of Budburst") +
+  theme_minimal()
+
+ggsave("budburst_Type_boxplot.png")
+
+# Normality within groups (Shapiro-Wilk test)
+LP %>%
+  group_by(Type) %>%
+  summarise(shapiro_p = shapiro.test(Julian_budburst)$p.value)
+# nope
+
+kruskal.test(Julian_budburst ~ Type, data = LP)
+# not significant
 
 
+# Density plot: Budburst x Type
+
+ggplot(LP, aes(x = Julian_budburst, color = Type, fill = Type)) +
+  geom_density(alpha = 0.3) +
+  labs(x = "Budburst (Julian day)",
+       y="Density") +
+  theme_minimal() +
+  theme(
+    legend.position = c(0.95,1),
+    legend.justification = c("right", "top"))
+
+ggsave("budburst_Type_density.png")
+
+    
+
+# Budset & Budburst together ----------------------------------------------
+
+# new Day 0 for Julian day
+# first recorded budset day = 11/09/2023
+
+LP$date_budset <- as.Date(LP$date_budset)
+# date planted = 20-23/6/2023
+# first date = 20/6/2023 i.e., 2023/06/20
+LP$Julian_budset_2 <- julian(LP$date_budset, origin = as.Date("2023/06/20"))  
     
     
+LP$date_budburst <- as.Date(LP$date_budburst)
+LP$Julian_budburst_2 <- julian(LP$date_budburst, origin = as.Date("2023/06/20"))   
     
-    
-    
-    
-    
+# BUDSET
+ggplot(LP, aes(x = Julian_budset_2, color = Provenance, fill = Provenance)) +
+  geom_density(alpha = 0.3) +
+  labs(x = "Budset (Julian days)",
+       y = "Density") +
+  theme_minimal() +
+  theme(
+    legend.position = c(1,1),
+    legend.justification = c("right", "top")
+  )
+
+# TOGETHER
+ggplot() +
+  geom_density(data = LP, 
+               aes(x = Julian_budset_2, color = Provenance, fill = Provenance), 
+               alpha = 0.3) +
+  geom_density(data = LP, 
+               aes(x = Julian_budburst_2, color = Provenance, fill = Provenance), 
+               alpha = 0.3, linetype = "dashed") +
+  labs(x = "Julian days", y = "Density") +
+  theme_minimal() +
+  theme(
+    legend.position = c(1,1),
+    legend.justification = c("right", "top")
+  )
+
+# Difference between budset and budburst
+LP$Julian_difference <- LP$Julian_budburst_2 - LP$Julian_budset_2
+
+
