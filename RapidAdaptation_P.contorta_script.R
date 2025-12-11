@@ -140,8 +140,16 @@ colnames(LP)
 TypeProvenanceCounts <- LP %>% 
   count(Provenance, Type)
 
-StatusTypeProvenance <- LP %>% 
+interaction <- LP %>% 
   count(Provenance, Type, status_2)
+
+ggplot(interaction, aes(x = Provenance, y = n, fill = status_2)) +
+  geom_col(position = "fill") +
+  facet_wrap(~ Type) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(y = "Mortality (%)", fill = "Status") +
+  theme_minimal()
+
 
 # Status across ------------------------------------------------------------------
 
@@ -257,6 +265,17 @@ ggplot(StatusBlockCounts, aes(x=factor(Block), y=n, fill=status_2)) +
   ) 
 
 ggsave("StatusByBlock.png")
+
+
+
+# Interaction -------------------------------------------------------------
+
+
+
+
+
+
+
 
 # Status by Family --------------------------------------------------------
 
@@ -922,7 +941,7 @@ ggplot(LP, aes(x = Julian_budset_2, color = Provenance, fill = Provenance)) +
     legend.justification = c("right", "top")
   )
 
-# TOGETHER
+# TOGETHER - Provenance
 ggplot() +
   geom_density(data = LP, 
                aes(x = Julian_budset_2, color = Provenance, fill = Provenance), 
@@ -937,7 +956,65 @@ ggplot() +
     legend.justification = c("right", "top")
   )
 
+ggsave("BS&BB_Provenance.png")
+
+# TOGETHER - Type
+ggplot() +
+  geom_density(data = LP, 
+               aes(x = Julian_budset_2, color = Type, fill = Type), 
+               alpha = 0.3) +
+  geom_density(data = LP, 
+               aes(x = Julian_budburst_2, color = Type, fill = Type), 
+               alpha = 0.3, linetype = "dashed") +
+  labs(x = "Julian days", y = "Density") +
+  theme_minimal() +
+  theme(
+    legend.position = c(1,1),
+    legend.justification = c("right", "top")
+  )
+
+ggsave("BS&BB_Type.png")
+
 # Difference between budset and budburst
 LP$Julian_difference <- LP$Julian_budburst_2 - LP$Julian_budset_2
+
+# Histogram
+ggplot(LP, aes(Julian_difference)) +
+  geom_histogram(binwidth = 7, fill = "steelblue", color = "black") +
+  labs(x = "Days between budset and budburst", 
+       y = "Number of trees") +
+  theme_minimal()
+
+  # how are there trees with budburst before budset??
+problem_trees <- LP %>% 
+  filter(Julian_difference < 0)
+  #' 6 trees with budset after budburst: no budset recorded, then budset & budburst simultaneously, then "second" budset afterwards??
+  #' 4 Regen (Rowens, North Coast)
+  #' 1 Plantation (Rowens, North Coast)
+  #' 1 Origin (Alaska)
+
+
+# create unique Tree ID column
+LP$treeID <- paste(LP$Block, LP$Position, sep="-")
+
+
+
+ggsave("BS_BB_difference.png")
+
+# How many trees budset and budburst dates for?
+  # How many values in LP$Julian_budset_2 and LP$Julian_budburstt_2?
+
+sum(!is.na(LP$Julian_budset_2))
+  # 549 trees have budset data
+
+sum(!is.na(LP$Julian_budburst_2))
+  # 575 trees have budburst data
+
+# 26 didn't have noticeable buds?
+
+# How many trees both budset and budburst dates for?
+sum(!is.na(LP$Julian_budset_2) & !is.na(LP$Julian_budburst_2))
+  # 529 have data for both
+
 
 
