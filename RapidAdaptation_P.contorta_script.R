@@ -136,19 +136,6 @@ LP$Julian_budburst <- julian(LP$date_budburst, origin = as.Date("2024-02-01"))
 colnames(LP)
 
 
-# summary counts
-TypeProvenanceCounts <- LP %>% 
-  count(Provenance, Type)
-
-interaction <- LP %>% 
-  count(Provenance, Type, status_2)
-
-ggplot(interaction, aes(x = Provenance, y = n, fill = status_2)) +
-  geom_col(position = "fill") +
-  facet_wrap(~ Type) +
-  scale_y_continuous(labels = scales::percent_format()) +
-  labs(y = "Mortality (%)", fill = "Status") +
-  theme_minimal()
 
 
 # Status across ------------------------------------------------------------------
@@ -268,14 +255,54 @@ ggsave("StatusByBlock.png")
 
 
 
-# Interaction -------------------------------------------------------------
+# Interaction graph -------------------------------------------------------------
+
+# how do provenance AND type influence mortality?
+
+# summary table for how many originally in each cohort & provenance AND how many survived
+interaction <- LP %>% 
+  count(Provenance, Type, status_2) %>% 
+  pivot_wider(
+    names_from = status_2,
+    values_from = n
+  ) %>% 
+  left_join(TypeProvenanceCounts %>%  select(Provenance, Type, n),
+            by = c("Provenance", "Type")) %>% 
+  mutate(prop_alive = alive / n)
 
 
+ggplot(interaction, aes(x = Provenance, y = prop_alive*100, fill = Type)) +
+  geom_col(position="dodge") +
+  facet_wrap(~ Type)  +
+  labs(
+    y = "Percentage alive"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+# Are differences in mortality within Provenances and between Types (cohorts) significant?
+
+# alive = 1, dead = 0
+LP$status_bin <- ifelse(LP$status_2 == "alive", 1, 0)
+
+LP$fStatus <- factor(LP$status_2)
+LP$Provenance <- factor(LP$Provenance)
+LP$Type <- factor(LP$Type)
 
 
+# Interaction model -------------------------------------------------------
+
+ # start with one explanatory variable (Provenance)
+# Reference level = Alaska
+# Dummy 1 = ProvNC
+# Dummy 2 = ProvSR
 
 
+model <- glm(fStatus ~ Provenance * Type, 
+             data = LP, family = binomial)
 
+summary(model)
+  # Regeneration is significant predictor of status?
 
 # Status by Family --------------------------------------------------------
 
