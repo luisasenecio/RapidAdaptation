@@ -285,10 +285,6 @@ ggplot(interaction, aes(x = Provenance, y = prop_alive*100, fill = Type)) +
 # alive = 1, dead = 0
 LP$status_bin <- ifelse(LP$status_2 == "alive", 1, 0)
 
-LP$fStatus <- factor(LP$status_2)
-LP$Provenance <- factor(LP$Provenance)
-LP$Type <- factor(LP$Type)
-
 
 # Interaction model -------------------------------------------------------
 
@@ -297,6 +293,10 @@ LP$Type <- factor(LP$Type)
 # Dummy 1 = ProvNC
 # Dummy 2 = ProvSR
 
+
+LP$fStatus <- factor(LP$status_2)
+LP$Provenance <- factor(LP$Provenance)
+LP$Type <- factor(LP$Type)
 
 model <- glm(fStatus ~ Provenance * Type, 
              data = LP, family = binomial)
@@ -1042,6 +1042,9 @@ sum(!is.na(LP$Julian_budburst_2))
 # How many trees both budset and budburst dates for?
 sum(!is.na(LP$Julian_budset_2) & !is.na(LP$Julian_budburst_2))
   # 529 have data for both
+
+
+# Weather data ------------------------------------------------------------
 
 
 
