@@ -3,7 +3,7 @@
 #' This script focuses on P. contorta (Lodgepole pine)
 #' Experimental setup:
 #' 1. Origin population in North America (Skeena river)
-#' 2. Seed taken from origin populations and germinated in UK & planted at Rowens & Benmore -> mature plantations
+#' 2. Seed taken from origin populations -> germinated in UK -> planted at Rowens & Benmore -> mature plantations
 #' 3. Natural regeneration from mature plantations (naturalised)
 #' Seeds taken from all three populations
 #' 
@@ -25,6 +25,8 @@ library(tidyr)
 library(readxl)
 library(tidyverse)
 library(colourpicker)
+
+setwd("C:/Users/luidnn/OneDrive - UKCEH/Documents/R projects/RapidAdaptation")
 
 data <- read_excel("P:/07793_newLEAF/Workfiles/WP4/RapidAdaptationTrial_MasterSheet.xlsx", sheet = "Pinus contorta")
 
@@ -108,8 +110,15 @@ LP <- data %>%
   )  %>% 
   select(-c(`Height (cm)...14`, `Needle length 1 (cm)`, `Needle length 2 (cm)`, Ruler, Offset, Size)) %>% 
   mutate(across(c(DBB_1, height_1, needle_1, needle_2, height_2, DBB_2),as.numeric)) %>% 
-  mutate(height_2 = height_2*10)
+  mutate(height_2 = height_2*10) %>% 
+  mutate(Family = ifelse(Family == "sub for LPNC - UKA4 - actually LPNC - UKA1",
+                         "LPNC - UKA1",
+                         Family))
     # NAs introduced by coercion
+
+# "sub for LPNC - UKA4 - actually LPNC - UKA1"
+length(unique(LP$Family))
+
 
 
 # Convert into Julian days ------------------------------------------------
@@ -136,9 +145,29 @@ LP$Julian_budburst <- julian(LP$date_budburst, origin = as.Date("2024-02-01"))
 colnames(LP)
 
 
+# Number of trees per group ------------------------------------------------
 
+# FAMILY
+colnames(LP)
+length(unique(LP$Family))
+# 54 families
 
-# Status across ------------------------------------------------------------------
+LP %>%  
+  count(Family, sort=TRUE) %>% 
+  ggplot(aes(x=reorder(Family, -n), y=n, fill = n))  +
+  geom_col() +
+  scale_fill_gradient(low="lightblue", high="darkblue") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle=45, hjust = 1)) +
+  labs(y="Number of trees", x="Family")
+# wildly different distribution
+#' 5 families with 50 trees
+#' most families 10 trees
+#' 1 family ~8 trees
+
+ggsave("TreesPerFamily.png")
+
+# Status across whole experiment ------------------------------------------------------------------
 
 LP_long_status <- LP %>% 
   pivot_longer(
@@ -306,32 +335,41 @@ summary(model)
 
 # Status by Family --------------------------------------------------------
 
-
-length((LP$Family[LP$Family=="sub for LPNC - UKA4 - actually LPNC - UKA1"]))
-
-LP_2 <- LP %>% 
-  mutate(
-    Family=ifelse(Family=="sub for LPNC - UKA4 - actually LPNC - UKA1",
-                  "LPNC - UKA1",
-    Family
-    )
-  )
-
-length(unique(LP_2$Family))
+length(unique(LP$Family))
   # 54 families
 
-StatusFamily <- LP_2 %>% 
+StatusFamily <- LP %>% 
   group_by(Family) %>% 
-  summarise(
-    total=n(),
-    alive=sum(status_2 == "alive"),
-    proportion_alive =alive/total) %>% 
-  ungroup()
+  summarise(total=n(),
+            alive = sum(status_2=="alive", na.rm=T),
+            percent_alive = alive / total * 100) 
 
-StatusFamily_sub <- StatusFamily %>% 
-  arrange(desc(proportion_alive)) %>% 
-  slice(c(1:10, (n()-9):n())) %>% 
-  mutate(percent_alive = proportion_alive*100)
+ggplot(StatusFamily,
+       aes(y=reorder(Family, percent_alive),
+           x=percent_alive,
+           fill=percent_alive)) +
+  geom_col() +
+  scale_fill_gradient(low="lightblue", high="darkblue") +
+  theme_minimal() +
+  labs(
+    x="Percentage",
+    y="Family",
+    fill="Percent alive"
+  )
+
+
+# StatusFamily <- LP %>% 
+#   group_by(Family) %>% 
+#   summarise(
+#     total=n(),
+#     alive=sum(status_2 == "alive"),
+#     proportion_alive =alive/total) %>% 
+#   ungroup()
+# 
+# StatusFamily_sub <- StatusFamily %>% 
+#   arrange(desc(proportion_alive)) %>% 
+#   slice(c(1:10, (n()-9):n())) %>% 
+#   mutate(percent_alive = proportion_alive*100)
 
 # top and bottom 10 families (based on percentage_alive)
 
@@ -1045,6 +1083,31 @@ sum(!is.na(LP$Julian_budset_2) & !is.na(LP$Julian_budburst_2))
 
 
 # Weather data ------------------------------------------------------------
+
+  #' import all files in MetData folder
+  #' as they're imported, bind them to each other (at bottom)
+
+data_path <- "MetData"
+
+# read & bind all datasets
+MetData <- list.files(
+  path = data_path,
+  pattern = "\\.csv$",   # change if needed
+  full.names = TRUE
+) %>%
+  map_dfr(read_csv)
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

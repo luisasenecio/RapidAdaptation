@@ -1,0 +1,194 @@
+---
+title: "Pinus contorta bioassay test"
+author: "Krisztian Nemeth"
+date: "2026-01-08"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE
+)
+
+# ---- Packages ----
+required_packages <- c(
+  "dplyr",
+  "ggplot2",
+  "tidyr",
+  "readxl",
+  "scales",
+  "tinytex"
+)
+
+new_packages <- required_packages[!(required_packages %in% installed.packages()[,"Package"])]
+if (length(new_packages)) install.packages(new_packages)
+
+# Load libraries
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(readxl)
+library(scales)
+
+# ---- LaTeX (for PDF output) ----
+if (!tinytex::is_tinytex()) {
+  tinytex::install_tinytex()
+}
+```
+
+## Data Cleaning and AUDPC Calculation
+
+```{r data_cleaning}
+
+# Load the data
+
+bioassay <- read_excel("P:/07793_newLEAF/Workfiles/WP4/Bioassay 2025/Pinus_contorta_bioassay.xlsx", sheet = "Results")
+
+weekly_cols <- c("Bd0","Bd7","Bd14","Bd21","Bd28","Bd35","Bd42","Bd49","Bd67")
+
+# Convert weekly columns to numeric
+
+bioassay <- bioassay %>%
+mutate(across(all_of(weekly_cols), as.numeric))
+
+# Clean up CD0 and CD49, and filter out rows without valid data
+
+bioassay_clean <- bioassay %>%
+filter(!is.na(Family), Family != "NA", rowSums(!is.na(across(all_of(weekly_cols)))) > 0) %>%
+mutate(
+CD0_numeric = as.numeric(na_if(CD0_numeric, "NA")),
+CD49_numeric = as.numeric(na_if(CD49_numeric, "NA"))
+) %>%
+filter(!is.na(CD0_numeric), !is.na(CD49_numeric)) %>%
+mutate(
+CD0_numeric = factor(CD0_numeric, levels = c(1,2,3,4), labels = c("Green", "Yellow", "Straw", "Red")),
+CD49_numeric = factor(CD49_numeric, levels = c(1,2,3,4,5,6), labels = c("Green", "Yellow", "Straw", "Red", "Dull-green", "Brown"))
+)
+
+# Compute AUDPC
+
+time <- c(0, 7, 14, 21, 28, 35, 42, 49, 67)
+bioassay_clean$AUDPC <- apply(bioassay_clean[, weekly_cols], 1, function(y) {
+ok <- !is.na(y)
+sum((y[ok][-1] + y[ok][-length(y[ok])])/2 * diff(time[ok]))
+})
+
+# Optional: log transform
+
+bioassay_clean$AUDPC_log <- log10(bioassay_clean$AUDPC + 1)
+```
+
+## Needle Colour at Day 0
+
+```{r plot_cd0, echo=FALSE}
+
+ggplot(bioassay_clean, aes(x = Type, fill = CD0_numeric)) +
+geom_bar(position = "fill") +
+facet_wrap(~Provenance, scales = "free_x", drop = TRUE) +
+scale_y_continuous(labels = scales::percent_format()) +
+scale_fill_manual(values = c("green", "yellow", "tan", "red")) +
+theme_bw() +
+labs(
+x = "Provenance",
+y = "Percentage of needles",
+fill = "Needle colour at Day 0"
+) +
+theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+## Needle Colour at Day 49
+```{r plot_cd49, echo=FALSE}
+ggplot(bioassay_clean %>% filter(!is.na(CD49_numeric)), aes(x = Type, fill = CD49_numeric)) +
+geom_bar(position = "fill") +
+facet_wrap(~Provenance, scales = "free_x", drop = TRUE) +
+scale_y_continuous(labels = scales::percent_format()) +
+scale_fill_manual(values = c("green", "yellow", "tan", "red", "darkgreen", "brown")) +
+theme_bw() +
+labs(
+x = "Type",
+y = "Percentage of needles",
+fill = "Needle colour at Day 49"
+) +
+theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+## AUDPC Boxplot
+```{r boxplot_AUDC, echo=FALSE}
+ggplot(bioassay_clean, aes(x = Provenance, y = AUDPC, fill = Type)) +
+geom_boxplot(position = position_dodge(width = 0.8)) +
+theme_bw() +
+labs(
+x = "Provenance",
+y = "AUDPC",
+fill = "Type"
+) +
+theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+## Log-Transformed AUDPC Boxplot
+
+```{r boxplot_log-transformed, echo=FALSE}
+
+ggplot(bioassay_clean, aes(x = Provenance, y = AUDPC_log, fill = Type)) +
+geom_boxplot(position = position_dodge(width = 0.8)) +
+theme_bw() +
+labs(
+x = "Provenance",
+y = "AUDPC (log-transformed)",
+fill = "Type"
+) +
+theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+## Disease Progression Over Time
+```{r plot_diseaseprogression}
+bioassay_long <- bioassay_clean %>%
+pivot_longer(cols = weekly_cols, names_to = "Day", values_to = "Disease") %>%
+mutate(Day = as.numeric(gsub("Bd", "", Day)))
+
+ggplot(bioassay_long, aes(x = Day, y = Disease, color = Type)) +
+stat_summary(fun = mean, geom = "line") +
+stat_summary(fun.data = mean_se, geom = "ribbon", alpha = 0.2) +
+facet_wrap(~Provenance) +
+theme_bw()
+```
+
+## Spatial Heatmap of Disease at Day 67
+```{r plot_heatmap, echo=FALSE}
+bioassay_spatial <- bioassay %>%
+filter(Bioassay %in% 1:3) %>%
+mutate(
+Bd67 = as.character(Bd67),
+Bd67 = gsub("%","",Bd67),
+Bd67 = as.numeric(Bd67),
+needle_num = as.numeric(Position),
+col = ceiling(needle_num / 20),
+row = ((needle_num - 1) %% 20) + 1,
+Bioassay = factor(Bioassay, levels = 1:3, labels = paste("Bioassay", 1:3))
+)
+
+ggplot(bioassay_spatial, aes(x = row, y = col, fill = Bd67)) +
+geom_tile(color = "white") +
+scale_fill_gradientn(
+colors = c("green", "yellow", "orange", "red"),
+limits = c(0, 100),
+na.value = "grey90"
+) +
+facet_grid(Bioassay ~ Block) +
+scale_x_continuous(expand = c(0,0), breaks = seq(1,20,2)) +
+scale_y_reverse(breaks = 1:6) +
+theme_minimal() +
+labs(
+x = "Row within column",
+y = "Column in block",
+fill = "% Brown needles at Bd67"
+) +
+theme(
+axis.text = element_text(size = 8),
+panel.grid = element_blank()
+)
+```
