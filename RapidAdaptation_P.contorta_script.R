@@ -26,6 +26,8 @@ library(readxl)
 library(tidyverse)
 library(colourpicker)
 library(lme4)
+library(glmmTMB)
+library(emmeans)
 
 setwd("C:/Users/luidnn/OneDrive - UKCEH/Documents/R projects/RapidAdaptation")
 
@@ -368,7 +370,7 @@ drop1(model, test="Chisq")
 class(model)
 anova(model)
 summary(glmerfit)
-library(glmmTMB)
+
 model2 <- glmmTMB(status_bin ~ Type + Provenance + (1|Family),
                   data=LP,
                   family=binomial)
@@ -378,7 +380,7 @@ model3 <- glmer(status_bin ~ Provenance * Type + (1|Family),
                 family = binomial)
 
 install.packages("emmeans")
-library(emmeans)
+
 emmeans(model3, pairwise ~ Provenance | Type)
   #' none of provenances are significantly different in each Type
 emmeans(model3, pairwise ~ Type | Provenance)
@@ -1122,7 +1124,7 @@ sum(!is.na(LP$Julian_budset_2) & !is.na(LP$Julian_budburst_2))
   # 529 have data for both
 
 
-# Weather data ------------------------------------------------------------
+# MetOffice data ------------------------------------------------------------
 
   #' import all files in MetData folder
   #' as they're imported, bind them to each other (at bottom)
@@ -1132,11 +1134,180 @@ data_path <- "MetData"
 # read & bind all datasets
 MetData <- list.files(
   path = data_path,
-  pattern = "\\.csv$",   # change if needed
+  pattern = "\\.csv$",   
   full.names = TRUE
-  ) %>%
-  map_dfr(read_csv)
+) %>%
+  map_dfr(~ read_csv(.x, col_types = cols(
+    `Report Date / Time` = col_datetime(format = "%Y-%m-%d %H:%M:%S")  # adjust format if needed
+  )))
 
+# separate date and time into two columns
+colnames(MetData)
+MetData <- MetData %>%
+  separate(
+    col="Report Date / Time",
+    into = c("Report_Date", "Report_Time"),
+    sep = " "
+  ) %>% 
+  mutate(
+    Report_Date = as.Date(`Report_Date`),
+    Report_Time = hms::as_hms(Report_Time)
+  )
+
+# how many NAs (were 1344, now 5)
+sum(is.na(MetData$Report_Date))
+  # 5
+
+NA_summary <- MetData %>% 
+  filter(is.na(Report_Date))
+
+# take date from ID column
+MetData %>%
+  filter(is.na(Report_Date)) %>%
+  select(Id, Report_Date) %>% 
+  mutate(
+    Report_Date = coalesce(
+      Report_Date,                        
+      as.Date(substr(Id, 1, 8), "%Y%m%d")
+    )
+  )
+
+# repopulate date column
+MetData <- MetData %>%
+  mutate(
+    # Only fill missing Report_Date values
+    Report_Date = coalesce(
+      Report_Date,                        
+      as.Date(substr(Id, 1, 8), "%Y%m%d")
+      )
+    )
+  # still 5 NAs -> fine
+
+str(MetData$Report_Date)
+
+# check whole range of dates has been imported
+range(MetData$Report_Date, na.rm = TRUE)
+  # 20.6.2023 to 15.6.2024
+unique(MetData$Report_Date)
+
+# remove all unecessary columns
+MetData <- MetData %>% 
+  select(where(~!all(is.na(.)))) %>% 
+  filter(!is.na(Report_Date))
+
+# produce daily average, min and max
+MetData_sum <- MetData %>% 
+  group_by(Report_Date) %>% 
+  summarise(
+    daily_avg = mean(`Air Temperature`, na.rm=T),
+    daily_min = min(`Air Temperature`, na.rm = T),
+    daily_max = max(`Air Temperature`, na.rm=T)
+  ) %>% 
+  ungroup() %>% 
+  filter(Report_Date >= as.Date("2023/06/20") &
+           Report_Date <= as.Date("2024/05/22")) %>% 
+  mutate(
+    Julian_Day_Met = as.integer(julian(Report_Date, origin = as.Date("2023/06/20")))   # add Julian day -> remove all dates before "2023/06/20" (=planting date)
+  )
+
+range(MetData_sum$Report_Date, na.rm=T)
+
+
+
+
+# BUDSET & BUDBURST & TEMPERATURES ----------------------------------------
+
+# count how many recorded trees per Julian Day
+budset_counts <- LP %>%
+  filter(!is.na(Julian_budset_2)) %>%
+  count(Julian_Day_2 = Julian_budset_2) %>%   # counts how many trees have that Julian day
+  rename(n_budset = n)
+
+budburst_counts <- LP %>%
+  filter(!is.na(Julian_budburst_2)) %>%
+  count(Julian_Day_2 = Julian_budburst_2) %>%
+  rename(n_budburst = n)
+
+# join budset ad budburst counts together
+bud_daily_counts <- full_join(budset_counts, budburst_counts, by = "Julian_Day_2") %>%
+  # replace NAs with 0
+  mutate(
+    n_budset = ifelse(is.na(n_budset), 0, n_budset),
+    n_budburst = ifelse(is.na(n_budburst), 0, n_budburst)
+  ) %>% 
+  mutate(Julian_Day_2 = as.integer(Julian_Day_2))
+
+# add daily temperature
+Bud_temp <- MetData_sum %>%
+  left_join(bud_daily_counts, 
+            by = c("Julian_Day_Met" = "Julian_Day_2")) %>% 
+  # replace any remaining NAs in bud counts with 0
+  mutate(
+    n_budset   = ifelse(is.na(n_budset), 0, n_budset),
+    n_budburst = ifelse(is.na(n_budburst), 0, n_budburst)
+  )
+
+scale_factor <- 25/300
+
+
+ggplot(Bud_temp, aes(x = Julian_Day_Met)) +
+  geom_area(aes(y=daily_avg), fill="#ADD8E6", alpha=0.2) +
+  geom_line(aes(y = daily_avg), color = "#ADD8E6", size = 1) +
+  geom_bar(aes(y = n_budset*scale_factor), 
+           fill = "#CDAA7D", alpha = 0.9, width = 1.5,
+           stat="identity", position="stack") +
+  geom_bar(aes(y = n_budburst*scale_factor), 
+           fill = "#A2CD5A", alpha = 0.9, width = 1.5,
+           stat="identity", position="stack") +
+  scale_y_continuous(
+    name = "Temperature (°C)",
+    limits=c(0,25),
+    sec.axis = sec_axis(~ ./scale_factor, name = "Number of Trees")
+  ) +
+  scale_x_continuous(
+    breaks = seq(min(Bud_temp$Julian_Day_Met),
+                 max(Bud_temp$Julian_Day_Met),
+                 by = 10)
+  ) +
+  theme_minimal() +
+  labs(x = "Julian Day") +
+  theme(
+    axis.title.y.left = element_text(margin = margin(r = 15)),  
+    axis.title.y.right = element_text(margin = margin(l = 15)),
+    axis.title.x = element_text(margin = margin(t = 10))
+  )
+
+ggsave("Bud_Temp.png")
+
+c("#CDB79E", "#A2CD5A", "#6E8B3D", "#CDAA7D")
+
+
+# Degree days
+  #' Budset driven by cold exposure: days with T < 10
+  #' Budburst driven by warm exposure: days with T > 5
+
+Bud_temp <- Bud_temp %>%
+  arrange(Julian_Day_Met) %>%
+  mutate(
+    chill_dd = pmax(10 - daily_avg, 0),
+    warm_dd  = pmax(daily_avg - 5, 0),
+    
+    chill_sum = cumsum(chill_dd),
+    warm_sum  = cumsum(warm_dd)
+  )
+
+ggplot(Bud_temp, aes(x = Julian_Day_Met)) +
+  
+  geom_area(aes(y = chill_sum), fill = "#7FCDBB", alpha = 0.35) +
+  geom_line(aes(y = chill_sum), color = "#2C7FB8", size = 1) +
+  
+  geom_area(aes(y = warm_sum), fill = "#FDAE6B", alpha = 0.35) +
+  geom_line(aes(y = warm_sum), color = "#E6550D", size = 1) +
+  
+  geom_bar(aes(y = n_budset), stat="identity",
+           fill="#CDAA7D", alpha=0.9) +
+  geom_bar(aes(y = n_budburst), stat="identity",
+         fill="#A2CD5A", alpha=0.9)
 
 
 
