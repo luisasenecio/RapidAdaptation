@@ -25,6 +25,7 @@ library(tidyr)
 library(readxl)
 library(tidyverse)
 library(colourpicker)
+library(lme4)
 
 setwd("C:/Users/luidnn/OneDrive - UKCEH/Documents/R projects/RapidAdaptation")
 
@@ -265,8 +266,6 @@ ggsave("StatusProvenanceProportion.png")
 
 # Status by Block ---------------------------------------------------------
 
-
-
 StatusBlockCounts <- LP %>% 
   count(Block, status_2)
 
@@ -309,6 +308,8 @@ ggplot(interaction, aes(x = Provenance, y = prop_alive*100, fill = Type)) +
   theme_minimal() +
   theme(legend.position = "none")
 
+ggsave("InteractionPlot.png")
+
 # Are differences in mortality within Provenances and between Types (cohorts) significant?
 
 # alive = 1, dead = 0
@@ -333,6 +334,56 @@ model <- glm(fStatus ~ Provenance * Type,
 summary(model)
   # Regeneration is significant predictor of status?
 
+
+# binomial mixed model (GLMM)
+  #' fixed effects: type & provenance
+  #' random effect: family (many families, not main treatment)
+
+LP$status_bin <- ifelse(LP$status_2 == "alive", 1,0)
+model <- glmer(status_bin ~ Type + Provenance + Type:Provenance + (1| Family),
+                    data=LP,
+                    family=binomial)
+# generalised linear mixed effects regression?
+
+
+# test effects
+anova(model, test = "Chisq")
+  #' do survival rates differ among origin, plantation, and regeneration?
+  #' do survival rates differ among alaska, north coast, and skeena river?
+  #' does the effect of provenance depend on type?
+  #' 
+  #' npar = numberof parameters used to describe that effect
+  #' sum sq = how much variation in survival is explained by that effect (in percent?)
+  #' mean sq = average variation per parameter (e.g., 5.8 out of 11.6 variation explained is quite a lot)
+  #' F value = signal-to-noise ratio for that effect
+  #' Higher Sum Sq and F value = stronger effect
+  #' 
+  #' Type explains a meaningful amount of variation in survival 
+  #'  -> survival differs noticeably among origin, plantation and regeneration
+  #' Provenance: survival differs strongly among alaska, north coast, and skeena river
+  #' Type:Provenance: small. Effect of provenance is largely consistent across types. (provenance doesn't behave very differently across types)
+
+
+drop1(model, test="Chisq")
+class(model)
+anova(model)
+summary(glmerfit)
+library(glmmTMB)
+model2 <- glmmTMB(status_bin ~ Type + Provenance + (1|Family),
+                  data=LP,
+                  family=binomial)
+
+model3 <- glmer(status_bin ~ Provenance * Type + (1|Family),
+                data = LP,
+                family = binomial)
+
+install.packages("emmeans")
+library(emmeans)
+emmeans(model3, pairwise ~ Provenance | Type)
+  #' none of provenances are significantly different in each Type
+emmeans(model3, pairwise ~ Type | Provenance)
+
+
 # Status by Family --------------------------------------------------------
 
 length(unique(LP$Family))
@@ -352,24 +403,13 @@ ggplot(StatusFamily,
   scale_fill_gradient(low="lightblue", high="darkblue") +
   theme_minimal() +
   labs(
-    x="Percentage",
+    x="Percentage alive",
     y="Family",
     fill="Percent alive"
-  )
+  ) + 
+  theme(legend.position = "none")
 
-
-# StatusFamily <- LP %>% 
-#   group_by(Family) %>% 
-#   summarise(
-#     total=n(),
-#     alive=sum(status_2 == "alive"),
-#     proportion_alive =alive/total) %>% 
-#   ungroup()
-# 
-# StatusFamily_sub <- StatusFamily %>% 
-#   arrange(desc(proportion_alive)) %>% 
-#   slice(c(1:10, (n()-9):n())) %>% 
-#   mutate(percent_alive = proportion_alive*100)
+ggsave("StatusByFamily.png")
 
 # top and bottom 10 families (based on percentage_alive)
 
@@ -1094,19 +1134,8 @@ MetData <- list.files(
   path = data_path,
   pattern = "\\.csv$",   # change if needed
   full.names = TRUE
-) %>%
+  ) %>%
   map_dfr(read_csv)
-
-
-
-
-
-
-
-
-
-
-
 
 
 
