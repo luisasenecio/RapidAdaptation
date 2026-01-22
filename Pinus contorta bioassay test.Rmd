@@ -100,7 +100,7 @@ theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 ## Needle Colour at Day 49
 ```{r plot_cd49, echo=FALSE}
-ggplot(bioassay_clean %>% filter(!is.na(CD49_numeric)), aes(x = Type, fill = CD49_numeric)) +
+ggplot(bioassay_clean %>% filter(!is.na(CD49_numeric)), aes(x = Cohort, fill = CD49_numeric)) +
 geom_bar(position = "fill") +
 facet_wrap(~Provenance, scales = "free_x", drop = TRUE) +
 scale_y_continuous(labels = scales::percent_format()) +
@@ -117,7 +117,7 @@ theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 ## AUDPC Boxplot
 ```{r boxplot_AUDC, echo=FALSE}
-ggplot(bioassay_clean, aes(x = Provenance, y = AUDPC, fill = Type)) +
+ggplot(bioassay_clean, aes(x = Provenance, y = AUDPC, fill = Cohort)) +
 geom_boxplot(position = position_dodge(width = 0.8)) +
 theme_bw() +
 labs(

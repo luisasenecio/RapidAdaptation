@@ -122,7 +122,11 @@ LP <- data %>%
 # "sub for LPNC - UKA4 - actually LPNC - UKA1"
 length(unique(LP$Family))
 
-
+cohort_colors <- c(
+  "Origin" = "#F08080",
+  "Plantation" = "#528B8B",
+  "Regeneration" = "#EEC900"
+)
 
 # Convert into Julian days ------------------------------------------------
 
@@ -148,7 +152,7 @@ LP$Julian_budburst <- julian(LP$date_budburst, origin = as.Date("2024-02-01"))
 colnames(LP)
 
 
-# Number of trees per group ------------------------------------------------
+# Number of trees per family ------------------------------------------------
 
 # FAMILY
 colnames(LP)
@@ -169,6 +173,33 @@ LP %>%
 #' 1 family ~8 trees
 
 ggsave("TreesPerFamily.png")
+
+
+# Number of families per cohort and provenance ----------------------------
+
+library(dplyr)
+
+# Summarize number of families per provenance and cohort
+family_summary <- LP %>%
+  group_by(Provenance, Type) %>%     # group by provenance and cohort
+  summarise(num_families = n_distinct(Family)) %>%  # count unique families
+  ungroup()
+
+family_summary
+
+ggplot(family_summary, aes(x = Provenance, y = num_families, fill = Type)) +
+  geom_bar(stat = "identity", position = "dodge") +  # side-by-side bars
+  labs(
+    x = "Provenance",
+    y = "Number of Families",
+    fill = "Cohort"
+  ) +
+  scale_fill_manual(
+    values = cohort_colors) +
+  scale_y_continuous(breaks = seq(0, 10, by = 2)) + 
+  theme_minimal()
+
+gggsave("FamiliesProvenanceCohort.png")
 
 # Status across whole experiment ------------------------------------------------------------------
 
@@ -262,7 +293,8 @@ ggplot(StatusProvenance,
     x = "Provenance",
     y = "Percentage alive"
   ) +
-  theme_minimal()
+  theme_minimal() +
+  theme(legend.position = "none")
 
 ggsave("StatusProvenanceProportion.png")
 
@@ -1134,7 +1166,7 @@ data_path <- "MetData"
 # read & bind all datasets
 MetData <- list.files(
   path = data_path,
-  pattern = "\\.csv$",   
+  pattern = "//.csv$",   
   full.names = TRUE
 ) %>%
   map_dfr(~ read_csv(.x, col_types = cols(
@@ -1289,17 +1321,17 @@ c("#CDB79E", "#A2CD5A", "#6E8B3D", "#CDAA7D")
 Bud_temp <- Bud_temp %>%
   arrange(Julian_Day_Met) %>%
   mutate(
-    chill_dd = pmax(10 - daily_avg, 0),
+    cold_dd = pmax(10 - daily_avg, 0),
     warm_dd  = pmax(daily_avg - 5, 0),
     
-    chill_sum = cumsum(chill_dd),
+    cold_sum = cumsum(chill_dd),
     warm_sum  = cumsum(warm_dd)
   )
 
 ggplot(Bud_temp, aes(x = Julian_Day_Met)) +
   
-  geom_area(aes(y = chill_sum), fill = "#7FCDBB", alpha = 0.35) +
-  geom_line(aes(y = chill_sum), color = "#2C7FB8", size = 1) +
+  geom_area(aes(y = cold_sum), fill = "#7FCDBB", alpha = 0.35) +
+  geom_line(aes(y = cold_sum), color = "#2C7FB8", size = 1) +
   
   geom_area(aes(y = warm_sum), fill = "#FDAE6B", alpha = 0.35) +
   geom_line(aes(y = warm_sum), color = "#E6550D", size = 1) +
@@ -1308,6 +1340,459 @@ ggplot(Bud_temp, aes(x = Julian_Day_Met)) +
            fill="#CDAA7D", alpha=0.9) +
   geom_bar(aes(y = n_budburst), stat="identity",
          fill="#A2CD5A", alpha=0.9)
+
+
+# BIOASSAY ----------------------------------------------------------------
+
+controls <- read_excel("P:/07793_newLEAF/Workfiles/WP4/Bioassay 2025/Pinus_contorta_bioassay_AP_AUDPS.xlsx", sheet = "Controls")
+
+bioassay <- read_excel("P:/07793_newLEAF/Workfiles/WP4/Bioassay 2025/Pinus_contorta_bioassay_AP_AUDPS.xlsx", sheet = "RESULTS")
+weekly_cols <- c("Bd0","Bd7","Bd14","Bd21","Bd28","Bd35","Bd42","Bd49","Bd67")
+
+# Convert weekly columns to numeric
+bioassay <- bioassay %>%
+  mutate(across(all_of(weekly_cols), as.numeric))
+
+# Clean up CD0 and CD49, and filter out rows without valid data
+bioassay_clean <- bioassay %>%
+  filter(!is.na(Family), Family != "NA", rowSums(!is.na(across(all_of(weekly_cols)))) > 0) %>%
+  mutate(
+    CD0_numeric = as.numeric(na_if(CD0_numeric, "NA")),
+    CD49_numeric = as.numeric(na_if(CD49_numeric, "NA"))
+  ) %>%
+  mutate(
+    across(all_of(weekly_cols), ~ifelse(.==200 | . == 199, 100, .)) 
+  ) %>% 
+  filter(!is.na(CD0_numeric), !is.na(CD49_numeric)) %>%
+  mutate(
+    CD0_numeric = factor(CD0_numeric, levels = c(1,2,3,4), labels = c("Green", "Yellow", "Straw", "Red")),
+    CD49_numeric = factor(CD49_numeric, levels = c(1,2,3,4,5,6), labels = c("Green", "Yellow", "Straw", "Red", "Dull-green", "Brown"))
+  )
+
+max_value <- max(bioassay_clean[ , grepl("^Bd", names(bioassay_clean))], na.rm = TRUE)
+
+## Needle Colour at Day 0
+
+ggplot(bioassay_clean, aes(x = Cohort, fill = CD0_numeric)) +
+  geom_bar(position = "fill") +
+  facet_wrap(~Provenance, scales = "free_x", drop = TRUE) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  scale_fill_manual(values = c("#5F8A1E", "#F7D654", "#F0EB9E", "#D19797")) +
+  theme_bw() +
+  labs(
+    x = "Provenance",
+    y = "Percentage of needles",
+    fill = "Needle colour at Day 0"
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none")
+
+ggsave("Bioassay_Bd0.png")
+
+c("#D19797", "#F0EB9E", "#F7D654", "#5F8A1E","#377004", "#7A2F0A")
+
+
+## Needle Colour at Day 49
+ggplot(bioassay_clean %>% filter(!is.na(CD49_numeric)), aes(x = Cohort, fill = CD49_numeric)) +
+  geom_bar(position = "fill") +
+  facet_wrap(~Provenance, scales = "free_x", drop = TRUE) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  scale_fill_manual(values = c("#5F8A1E", "#F7D654", "#F0EB9E", "#D19797", "darkgreen", "#7A2F0A")) +
+  theme_bw() +
+  labs(
+    x = "Type",
+    y = "Percentage of needles",
+    fill = "Needle colour at Day 49"
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position="none")
+
+ggsave("Bioassay_Bd49.png")
+
+
+
+# Individual progression --------------------------------------------------
+
+#' how many needles go up and down again in scores?
+#' facet by population, family, cohort
+
+# long format:
+bioassay_long <- bioassay_clean %>% 
+  pivot_longer(
+    cols = starts_with("Bd"),
+    names_to = "Needle",
+    values_to = "Score"
+  ) %>% 
+  mutate(
+    Needle = as.numeric(gsub("Bd", "", Needle))
+  )
+
+ggplot(bioassay_long, aes(x = Needle, y = Score, group = Uniqueid, color = Provenance)) +
+  geom_line(alpha = 0.3) +  # light lines for individual needles
+  stat_summary(aes(group = Provenance), fun = mean, geom = "line", size = 1.2) +  # mean per provenance
+  facet_wrap(~ Cohort) +
+  theme_minimal() +
+  labs(title = "Needle score progression per Provenance and Cohort",
+       x = "Time (days)",
+       y = "% Brown")
+
+ggsave("Needle_progression.png")
+
+# how many needles' scores increased then decreased?
+# up_then_down <- function(x) {
+#   # remove NAs
+#   x <- x[!is.na(x)]
+#   
+#   # remove leading zeros
+#   if (all(x == 0)) return(FALSE)
+#   x <- x[which(cumsum(x != 0) > 0)]
+#   
+#   if (length(x) < 3) return(FALSE)
+#   
+#   d <- diff(x)
+#   
+#   # increase at some point AND decrease at some later point
+#   any(d > 0) & any(d < 0)
+# }
+# 
+# # apply function and make new column to store evaluation of function
+# needle_trend <- bioassay_clean %>%
+#   rowwise() %>%
+#   mutate(
+#     goes_up_down = up_then_down(c_across(all_of(weekly_cols)))
+#   ) %>%
+#   ungroup()
+
+
+up_then_down(c(0, 20, 100, 10))
+# should return TRUE
+
+
+# from which provenances and cohorts?
+(up_down_table <- needle_trend %>%
+    group_by(Provenance, Cohort) %>%
+    summarise(
+      total_needles = n(),
+      up_then_down = sum(goes_up_down),
+      proportion = up_then_down / total_needles,
+      .groups = "drop"
+    )
+)
+
+# from which families?
+(family_updown_summary <- needle_trend %>%
+    group_by(Family) %>%
+    summarise(
+      total_needles = n(),
+      n_up_down     = sum(goes_up_down == TRUE),
+      n_no_up_down  = sum(goes_up_down == FALSE),
+      prop_up_down  = n_up_down / total_needles,
+      prop_no_up_down = n_no_up_down / total_needles,
+      .groups = "drop"
+    ) %>% 
+    arrange(desc(n_up_down))
+)
+
+
+
+# Change function so it catches ANY DECREASE
+check_downward <- function(x) {
+  # remove NAs
+  x <- x[!is.na(x)]
+  
+  # remove leading zeros
+  x <- x[which(cumsum(x != 0) > 0)]
+  
+  if(length(x) < 2) return(FALSE)  # at least 2 points needed
+  
+  # detect if any decrease occurs
+  any(diff(x) < 0)
+}
+
+# apply to dataframe
+weekly_cols <- grep("^Bd", names(needle_trend), value = TRUE)
+
+needle_trend <- needle_trend %>%
+  rowwise() %>%
+  mutate(
+    decrease = check_downward(c_across(all_of(weekly_cols)))
+  ) %>%
+  ungroup()
+
+
+# Rate of score increase ----------------------------------------------------
+
+# remove up down needles
+needle_inc <- needle_trend %>% 
+  filter(!decrease)
+
+weekly_cols <- grep("^Bd", names(needle_trend), value = TRUE)
+
+days <- as.numeric(gsub("Bd", "", weekly_cols))
+
+needle_inc <- needle_inc %>%
+  rowwise() %>%
+  mutate(
+    increase_rate = {
+      scores <- c_across(all_of(weekly_cols))   # extract the 9 scores for this needle
+      lm_fit <- lm(scores ~ days)              # fit a line: Score ~ Day
+      coef(lm_fit)[2]                          # slope = rate of increase
+    }
+  ) %>%
+  ungroup()
+
+head(needle_inc %>% select(Family, Cohort, Provenance, increase_rate))
+
+# compare between provenance and cohort - boxplot
+ggplot(needle_inc, aes(x = Provenance, y = increase_rate, fill = Cohort)) +
+  geom_boxplot() +
+  theme_minimal() +
+  scale_fill_manual(
+    values = c("Origin" = "#F08080", "Plantation" = "#528B8B", "Regeneration" = "#EEC900")) +
+  labs(
+    y = "Rate of score increase"
+  )
+
+ggsave("Increase_rate.png")
+
+
+
+# AUDPS -------------------------------------------------------------------
+## AUDPS boxplot
+
+bioassay_clean$Provenance <- factor(
+  bioassay_clean$Provenance, 
+  levels = c("Alaska", "North Coast", "Skeena River")
+)
+
+bioassay_clean$Cohort <- factor(
+  bioassay_clean$Cohort, 
+  levels = c("Origin", "Plantation", "Regeneration")
+)
+
+bioassay_clean$AUDPS <- as.numeric(bioassay_clean$AUDPS)
+
+
+# Adjust AUDPS based on Control values:
+colnames(controls)
+str(controls_clean)
+
+controls_clean <- controls %>% 
+  select(-c("...5", "...6", "...7", "...8", "...9", "...10", "...11", "...12", "...13", "...14")) %>% 
+  slice(1:(n()-2)) 
+
+
+controls_clean$Bioassay1 <- as.numeric(controls_clean$Bioassay1)
+controls_clean$id <- as.numeric(controls_clean$id)
+
+controls_mean <- controls_clean %>% 
+  summarise(mean_B1 = mean(Bioassay1, na.rm =T),
+            mean_B2 = mean(Bioassay2, na.rm =T),
+            mean_B3 = mean(Bioassay3, na.rm =T)
+            ) %>% 
+  mutate(diff_B2 = mean_B2 - mean_B1,
+         diff_B3 = mean_B3 - mean_B1)
+
+#' B1 = 2786.283
+#' B2 = 2649.244
+#' B3 = 2941.478
+#' B2 - B1 = -137.0389
+#' B3 - B1 = 155.1944
+#' -> adjust B2 values by adding 137.0389
+#' -> adjust B3 values by subtracting 155.1944
+
+
+# Adjust AUPDS
+bioassay_clean <- bioassay_clean %>% 
+  mutate(
+    AUDPS_adj = case_when(
+      AUDPS == 0.0 ~0,
+      Bioassay == 2 ~ AUDPS+137.0389,
+      Bioassay == 3 ~AUDPS-155.1944,
+      Bioassay == 1 ~AUDPS,
+      TRUE~AUDPS
+    )
+  )
+
+# adjusted 
+ggplot(bioassay_clean,aes(x=Provenance, y=AUDPS_adj, fill=Cohort, 
+                          group=interaction(Provenance, Cohort))) +
+  geom_boxplot() +
+  scale_y_continuous(n.breaks = 10) +
+  theme_minimal() +
+  scale_fill_manual(
+    values = c("Origin" = "#F08080", "Plantation" = "#528B8B", "Regeneration" = "#EEC900")) +
+  theme(
+    axis.title.x = element_text(margin = margin(t=10)),
+    axis.title.y = element_text(margin=margin(r=15))
+  )
+
+ggsave("AUDPS_adj_boxplot.png")
+
+# how have means changed for each bioassay
+bioassay_clean %>%
+  group_by(Bioassay) %>%
+  summarise(
+    n_total = n(),
+    n_zero = sum(AUDPS == 0),
+    mean_before = mean(AUDPS, na.rm = TRUE),
+    mean_after  = mean(AUDPS_adj, na.rm = TRUE)
+  )
+
+# Statistically different?
+  #' two-way anova:
+  #' does AUDPS differ between provenance, cohort and/or interaction between both?
+
+anova_mod <- aov(
+  AUDPS_adj ~Provenance * Cohort + Bioassay,
+  data=bioassay_clean
+)
+summary(anova_mod)
+  #' provenance significant
+  #' provenance * cohort significant
+
+# anova assumptions met?
+shapiro.test(residuals(anova_mod))
+
+# null hypothesis: variable is normally distributed
+# reject null hypothesis if p < 0.05 => variable is not normally distributed
+
+ggplot(bioassay_clean, aes(x = AUDPS_adj)) +
+  geom_histogram(binwidth = 50, fill = "steelblue", color = "black") +
+  theme_minimal() +
+  labs(title = "Histogram of AUDPS_adj", x = "AUDPS_adj", y = "Count")
+
+ggplot(bioassay_clean, aes(sample = AUDPS_adj)) +
+  stat_qq() +
+  stat_qq_line() +
+  theme_minimal() +
+  labs(title = "Q-Q Plot of AUDPS_adj")
+
+# normality different by group?
+
+bioassay_clean %>%
+  group_by(Provenance, Cohort) %>%
+  summarise(
+    shapiro_p = shapiro.test(AUDPS_adj)$p.value
+  )
+   # nope equally non-normal distribution across all provenances and cohorts
+
+# log transform AUDPS_adj values
+# some values negative after control-adjusting
+# but 0 need to stay 0
+shift <- abs(min(bioassay_clean$AUDPS_adj, na.rm = TRUE)) + 1
+
+bioassay_clean <- bioassay_clean %>%
+  mutate(
+    AUDPS_adj_log = case_when(
+      AUDPS_adj == 0      ~ 0,          # keep zeros
+      TRUE                ~ log(AUDPS_adj + shift)  # shift non-zero values
+    )
+  )
+
+# test for normality again:
+ggplot(bioassay_clean, aes(sample = AUDPS_adj_log)) +
+  stat_qq() +
+  stat_qq_line() +
+  theme_minimal() +
+  labs(title = "Q-Q Plot of AUDPS_adj_log")
+
+bioassay_clean %>%
+  group_by(Provenance, Cohort) %>%
+  summarise(
+    shapiro_p = shapiro.test(AUDPS_adj_log)$p.value
+  )
+
+
+# DIFFERENT BY FAMILY??
+
+# Normalisation -----------------------------------------------------------
+
+min_val <- min(bioassay_clean$AUDPS_adj, na.rm = TRUE)
+max_val <- max(bioassay_clean$AUDPS_adj, na.rm = TRUE)
+
+
+
+bioassay_clean$AUDPS_adj_norm <- 100 * (bioassay_clean$AUDPS_adj - min_val) / (max_val - min_val)
+# zeros are now 2.0935059
+
+# make sure 2.0935059 is reserved for actual original zeros
+zeros <- subset(bioassay_clean, abs(AUDPS_adj_norm - 2.0935059) < 1e-6,
+       select = c(AUDPS_adj, AUDPS_adj_norm))
+
+ggplot(bioassay_clean, aes(sample = AUDPS_adj_norm)) +
+  stat_qq() +
+  stat_qq_line() +
+  theme_minimal() +
+  labs(title = "Q-Q Plot of AUDPS_adj_norm")
+
+bioassay_clean %>%
+  group_by(Provenance, Cohort) %>%
+  summarise(
+    shapiro_p = shapiro.test(AUDPS_adj_norm)$p.value
+  )
+
+
+# log transformation on adjusted and normalised values
+
+bioassay_clean$AUDPS_adj_norm_log <- log(bioassay_clean$AUDPS_adj_norm + 1)
+
+ggplot(bioassay_clean, aes(sample = AUDPS_adj_norm_log)) +
+  stat_qq() +
+  stat_qq_line() +
+  theme_minimal() +
+  labs(title = "Q-Q Plot of AUDPS_adj_norm_log")
+
+bioassay_clean %>%
+  group_by(Provenance, Cohort) %>%
+  summarise(
+    shapiro_p = shapiro.test(AUDPS_adj_norm_log)$p.value
+  )
+
+# as normal as it gets.
+
+ggplot(bioassay_clean,aes(x=Provenance, y=AUDPS_adj_norm_log, fill=Cohort, 
+                          group=interaction(Provenance, Cohort))) +
+  geom_boxplot() +
+  scale_y_continuous(n.breaks = 10) +
+  theme_minimal() +
+  scale_fill_manual(
+    values = c("Origin" = "#F08080", "Plantation" = "#528B8B", "Regeneration" = "#EEC900")) +
+  theme(
+    axis.title.x = element_text(margin = margin(t=10)),
+    axis.title.y = element_text(margin=margin(r=15))
+  )
+# same pattern as with only adjusted AUDPS values
+
+ggsave("AUDPS_adj_norm_log - boxplot.png")
+
+
+# Model
+  #' response: AUDPS_adj_norm_log
+  #' fixed: provenance, cohort & interaction
+  #' random: bioassay
+
+install.packages("lmerTest")
+
+library(lmerTest)
+
+# Refit the model using lmerTest
+model <- lmer(AUDPS_adj_norm_log ~ Provenance * Cohort + (1 | Bioassay),
+              data = bioassay_clean)
+
+# Get summary with p-values
+summary(model)
+
+
+model <- lmer(AUDPS_adj_norm_log ~Provenance * Cohort + (1 | Bioassay),
+              data = bioassay_clean)
+  #' Provenance North Coast & Cohort Regeneration = significant predictors of AUDPS value?
+
+
+
+
+
+
 
 
 
