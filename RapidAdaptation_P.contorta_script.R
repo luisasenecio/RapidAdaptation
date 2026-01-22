@@ -165,27 +165,25 @@ LP %>%
   geom_col() +
   scale_fill_gradient(low="lightblue", high="darkblue") +
   theme_minimal() +
-  theme(axis.text.x = element_text(angle=45, hjust = 1)) +
+  theme(axis.text.x = element_text(angle=45, hjust = 1),
+        legend.position = "none") +
   labs(y="Number of trees", x="Family")
-# wildly different distribution
+
+
+# different distribution
 #' 5 families with 50 trees
 #' most families 10 trees
-#' 1 family ~8 trees
+#' 1 family 12/~8 trees
 
 ggsave("TreesPerFamily.png")
 
 
 # Number of families per cohort and provenance ----------------------------
 
-library(dplyr)
-
-# Summarize number of families per provenance and cohort
 family_summary <- LP %>%
   group_by(Provenance, Type) %>%     # group by provenance and cohort
   summarise(num_families = n_distinct(Family)) %>%  # count unique families
   ungroup()
-
-family_summary
 
 ggplot(family_summary, aes(x = Provenance, y = num_families, fill = Type)) +
   geom_bar(stat = "identity", position = "dodge") +  # side-by-side bars
@@ -199,7 +197,7 @@ ggplot(family_summary, aes(x = Provenance, y = num_families, fill = Type)) +
   scale_y_continuous(breaks = seq(0, 10, by = 2)) + 
   theme_minimal()
 
-gggsave("FamiliesProvenanceCohort.png")
+ggsave("FamiliesProvenanceCohort.png")
 
 # Status across whole experiment ------------------------------------------------------------------
 
@@ -445,6 +443,33 @@ ggplot(StatusFamily,
 
 ggsave("StatusByFamily.png")
 
+
+# change order of families by number of trees per family: 
+
+# Order Family factor by total number of trees (descending)
+StatusFamily <- StatusFamily %>%
+  mutate(Family = factor(Family, levels = StatusFamily$Family[order(-total)]))
+
+ggplot(StatusFamily,
+       aes(
+         y = Family,          # now Family is a factor ordered by total trees
+         x = percent_alive,
+         fill = percent_alive
+       )) +
+  geom_col() +
+  scale_fill_gradient(low="lightblue", high="darkblue") +
+  theme_minimal() +
+  labs(
+    x="Percentage alive",
+    y="Family",
+    fill="Percent alive"
+  ) +
+  theme(legend.position = "none")
+
+ggsave("FamilyPercentageAlive_ordered.png")
+
+
+
 # top and bottom 10 families (based on percentage_alive)
 
 ggplot(StatusFamily_sub, aes(x = reorder(Family, percent_alive), y = percent_alive, fill=percent_alive)) +
@@ -489,7 +514,6 @@ ggplot(StatusFamily, aes(x = reorder(Family, -total), y = total, fill=total)) +
   theme(axis.text.x = element_text(angle = 45))
 
 # Distribution -Type -------------------------------------------------------
-
 
 TypeCount <- LP %>% 
   group_by(Type) %>% 
@@ -1155,6 +1179,78 @@ sum(!is.na(LP$Julian_budburst_2))
 sum(!is.na(LP$Julian_budset_2) & !is.na(LP$Julian_budburst_2))
   # 529 have data for both
 
+
+# Cumulative BS & BB ------------------------------------------------------
+
+
+
+# BUDSET AND BUDBURST TOGETHER
+cumul_BSBB <- LP %>%
+  select(Julian_budset_2, Julian_budburst_2) %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = "Phenology",
+    values_to = "Julian_day"
+  ) %>%
+  filter(!is.na(Julian_day)) %>%                # remove missing
+  group_by(Phenology, Julian_day) %>%
+  summarise(n = n(), .groups = "drop") %>%     # count trees per day
+  arrange(Phenology, Julian_day) %>%
+  group_by(Phenology) %>%
+  mutate(cumulative = cumsum(n)) %>%
+  ungroup()
+
+# for nicer labels
+cumul_BSBB$Phenology <- recode(cumul_BSBB$Phenology,
+                             "Julian_budset_2" = "Budset",
+                             "Julian_budburst_2" = "Budburst")
+
+
+ggplot(cumul_BSBB, aes(x = Julian_day, y = cumulative, color = Phenology)) +
+  geom_line(size = 1.2) +
+  geom_point(size = 2) +
+  scale_color_manual(values = c("Budset" = "forestgreen", "Budburst" = "orange")) +
+  labs(
+    x = "Julian day",
+    y = "Cumulative number of trees",
+    color = "Phenology") +
+  theme_minimal()
+
+
+
+# # BUDSET
+# cumul_budset <- LP %>%
+#   filter(!is.na(Julian_budset_2)) %>%        # remove missing dates
+#   count(Julian_budset_2) %>%                 # count number of trees per day
+#   arrange(Julian_budset_2) %>%               # sort by Julian day
+#   mutate(cumulative = cumsum(n))  
+# 
+# ggplot(cumul_budset, aes(x = Julian_budset_2, y = cumulative)) +
+#   geom_line(color = "forestgreen", size = 1.2) +
+#   geom_point(color = "forestgreen", size = 2) +
+#   labs(
+#     x = "Julian day",
+#     y = "Cumulative number of trees",
+#     title = "Cumulative Budset"
+#   ) +
+#   theme_minimal()
+# 
+# # BUDBURST
+# cumul_budburst <- LP %>%
+#   filter(!is.na(Julian_budburst_2)) %>%
+#   count(Julian_budburst_2) %>%
+#   arrange(Julian_budburst_2) %>%
+#   mutate(cumulative = cumsum(n))
+# 
+# ggplot(cumul_budburst, aes(x = Julian_budburst_2, y = cumulative)) +
+#   geom_line(color = "orange", size = 1.2) +
+#   geom_point(color = "orange", size = 2) +
+#   labs(
+#     x = "Julian day",
+#     y = "Cumulative number of trees",
+#     title = "Cumulative Budburst"
+#   ) +
+#   theme_minimal()
 
 # MetOffice data ------------------------------------------------------------
 
