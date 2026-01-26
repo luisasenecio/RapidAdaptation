@@ -258,6 +258,7 @@ StatusType <- LP %>%
     proportion_alive=alive/total
   )
 
+
 ggplot(StatusType,
        aes(x = Type, y = proportion_alive*100, fill = Type)) +
   geom_col() +
@@ -267,7 +268,7 @@ ggplot(StatusType,
   ) +
   theme_minimal() +
   scale_fill_manual(
-    values = c("Origin" = "#F08080", "Plantation" = "#528B8B", "Regeneration" = "#EEC900")
+    values = cohort_colors)
   )
 
 ggsave("StatusProvenanceProportion.png")
@@ -356,26 +357,29 @@ LP$status_bin <- ifelse(LP$status_2 == "alive", 1, 0)
 # Dummy 2 = ProvSR
 
 
-LP$fStatus <- factor(LP$status_2)
-LP$Provenance <- factor(LP$Provenance)
-LP$Type <- factor(LP$Type)
-
-model <- glm(fStatus ~ Provenance * Type, 
-             data = LP, family = binomial)
-
-summary(model)
+# LP$fStatus <- factor(LP$status_2)
+# LP$Provenance <- factor(LP$Provenance)
+# LP$Type <- factor(LP$Type)
+# 
+# model <- glm(fStatus ~ Provenance * Type, 
+#              data = LP, family = binomial)
+# 
+# summary(model)
   # Regeneration is significant predictor of status?
 
-
+# DIFFERENT APPROACH:
 # binomial mixed model (GLMM)
   #' fixed effects: type & provenance
   #' random effect: family (many families, not main treatment)
 
 LP$status_bin <- ifelse(LP$status_2 == "alive", 1,0)
-model <- glmer(status_bin ~ Type + Provenance + Type:Provenance + (1| Family),
+model <- glmer(status_bin ~ Type + Provenance + Type:Provenance,
                     data=LP,
                     family=binomial)
-# generalised linear mixed effects regression?
+
+# (generalised linear mixed effects regression?)
+# remove Family because not comparable across Provenance and Cohort (+ (1| Family))
+
 
 
 # test effects
@@ -396,24 +400,24 @@ anova(model, test = "Chisq")
   #' Type:Provenance: small. Effect of provenance is largely consistent across types. (provenance doesn't behave very differently across types)
 
 
-drop1(model, test="Chisq")
-class(model)
-anova(model)
-summary(glmerfit)
-
-model2 <- glmmTMB(status_bin ~ Type + Provenance + (1|Family),
-                  data=LP,
-                  family=binomial)
-
-model3 <- glmer(status_bin ~ Provenance * Type + (1|Family),
-                data = LP,
-                family = binomial)
-
-install.packages("emmeans")
-
-emmeans(model3, pairwise ~ Provenance | Type)
-  #' none of provenances are significantly different in each Type
-emmeans(model3, pairwise ~ Type | Provenance)
+#' drop1(model, test="Chisq")
+#' class(model)
+#' anova(model)
+#' summary(glmerfit)
+#' 
+#' model2 <- glmmTMB(status_bin ~ Type + Provenance + (1|Family),
+#'                   data=LP,
+#'                   family=binomial)
+#' 
+#' model3 <- glmer(status_bin ~ Provenance * Type + (1|Family),
+#'                 data = LP,
+#'                 family = binomial)
+#' 
+#' install.packages("emmeans")
+#' 
+#' emmeans(model3, pairwise ~ Provenance | Type)
+#'   #' none of provenances are significantly different in each Type
+#' emmeans(model3, pairwise ~ Type | Provenance)
 
 
 # Status by Family --------------------------------------------------------
@@ -497,6 +501,7 @@ ggsave("StatusByFamily.png")
 FamilyDist <- StatusFamily %>% 
   count(total, name = "num_families")
 
+# How many individuals per number of families. e.g., 1 family has 8 trees
 ggplot(FamilyDist,
        aes(x=factor(total), y=num_families)) +
   geom_col(fill="steelblue") +
@@ -508,6 +513,7 @@ ggplot(FamilyDist,
 
 ggsave("FamilyDistribution.png")
 
+# how many trees per each family. e.g., family LPAL-Ca12 has 50 trees
 ggplot(StatusFamily, aes(x = reorder(Family, -total), y = total, fill=total)) +
   geom_col() +
   guides(fill="none") +
@@ -529,11 +535,9 @@ TypeCount <- LP %>%
 ggplot(LP, aes(x=Type, fill=Type)) +
   geom_bar() +
   theme(legend.position = "none") +
-  scale_fill_manual(
-    values = c("Origin" = "#F08080", "Plantation" = "#528B8B", "Regeneration" = "#EEC900")
-  ) +
-  labs(y="Number of trees") +
-  theme_minimal()
+  theme_minimal() +
+  scale_fill_manual(values = cohort_colors) +
+  labs(y="Number of trees") 
 
 ggsave("TypeDistribution.png")
 
@@ -796,12 +800,6 @@ ggsave("height_histogram.png")
 
 
 c("#9BCD9B", "#698B69", "#6E8B3D")
-
-
-
-
-
-
 
 
 
@@ -1121,7 +1119,7 @@ ggplot() +
 
 ggsave("BS&BB_Provenance.png")
 
-# TOGETHER - Type
+# TOGETHER - Cohort
 ggplot() +
   geom_density(data = LP, 
                aes(x = Julian_budset_2, color = Type, fill = Type), 
@@ -1161,7 +1159,6 @@ problem_trees <- LP %>%
 LP$treeID <- paste(LP$Block, LP$Position, sep="-")
 
 
-
 ggsave("BS_BB_difference.png")
 
 # How many trees budset and budburst dates for?
@@ -1181,8 +1178,6 @@ sum(!is.na(LP$Julian_budset_2) & !is.na(LP$Julian_budburst_2))
 
 
 # Cumulative BS & BB ------------------------------------------------------
-
-
 
 # BUDSET AND BUDBURST TOGETHER
 cumul_BSBB <- LP %>%
@@ -1214,8 +1209,62 @@ ggplot(cumul_BSBB, aes(x = Julian_day, y = cumulative, color = Phenology)) +
     x = "Julian day",
     y = "Cumulative number of trees",
     color = "Phenology") +
-  theme_minimal()
+  theme_minimal() +
+  theme(legend.position = "none")
 
+ggsave("cumulative_BSBB.png")
+
+# which days for start of increase?
+as.Date("2023-06-20") + 225
+# Budset increase date: 31.1.2024
+as.Date("2023-06-20") + 250
+# Budburst increase date: 25.4.2024
+
+# Per Cohort
+# first group dataset by trees from same cohort
+
+trees_long <- LP %>%
+  pivot_longer(
+    cols = c(Julian_budset_2, Julian_budburst_2),
+    names_to = "Phenology",
+    values_to = "Julian_day"
+  ) %>%
+  mutate(
+    Phenology = recode(Phenology,
+                       Julian_budset   = "Budset",
+                       Julian_budburst = "Budburst")
+  )
+
+# remove NAs
+trees_long <- trees_long %>%
+  filter(!is.na(Julian_day))
+
+# grouped by Type, Provenance & Phenology (first BB then BS)
+cumul_BSBB <- trees_long %>%
+  group_by(Type, Provenance, Phenology) %>%
+  arrange(Julian_day, .by_group = TRUE) %>%
+  mutate(cumulative = row_number()) %>%
+  mutate(cumulative_prop = cumulative / max(cumulative)) %>%
+  ungroup()
+
+# facet by cohort and provenance
+ggplot(cumul_BSBB,
+       aes(x = Julian_day,
+           y = cumulative,
+           color = Phenology)) +
+  geom_line(size = 1.1) +
+  facet_grid(Type ~ Provenance) +
+  scale_color_manual(values = c("Julian_budset_2" = "forestgreen",
+                                "Julian_budburst_2" = "orange")) +
+  labs(
+    x = "Days since 2023-06-20",
+    y = "Cumulative number of trees",
+    color = "Phenology"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+ggsave("PhenologyByProvenanceCohort.png")
 
 
 # # BUDSET
@@ -1560,35 +1609,34 @@ ggsave("Needle_progression.png")
 #   ungroup()
 
 
-up_then_down(c(0, 20, 100, 10))
-# should return TRUE
-
-
-# from which provenances and cohorts?
-(up_down_table <- needle_trend %>%
-    group_by(Provenance, Cohort) %>%
-    summarise(
-      total_needles = n(),
-      up_then_down = sum(goes_up_down),
-      proportion = up_then_down / total_needles,
-      .groups = "drop"
-    )
-)
-
-# from which families?
-(family_updown_summary <- needle_trend %>%
-    group_by(Family) %>%
-    summarise(
-      total_needles = n(),
-      n_up_down     = sum(goes_up_down == TRUE),
-      n_no_up_down  = sum(goes_up_down == FALSE),
-      prop_up_down  = n_up_down / total_needles,
-      prop_no_up_down = n_no_up_down / total_needles,
-      .groups = "drop"
-    ) %>% 
-    arrange(desc(n_up_down))
-)
-
+# up_then_down(c(0, 20, 100, 10))
+# # should return TRUE
+# 
+# 
+# # from which provenances and cohorts?
+# (up_down_table <- needle_trend %>%
+#     group_by(Provenance, Cohort) %>%
+#     summarise(
+#       total_needles = n(),
+#       up_then_down = sum(goes_up_down),
+#       proportion = up_then_down / total_needles,
+#       .groups = "drop"
+#     )
+# )
+# 
+# # from which families? (only those that go up then down, not those with any decrease)
+# (family_updown_summary <- needle_trend %>%
+#     group_by(Family) %>%
+#     summarise(
+#       total_needles = n(),
+#       n_up_down     = sum(goes_up_down == TRUE),
+#       n_no_up_down  = sum(goes_up_down == FALSE),
+#       prop_up_down  = n_up_down / total_needles,
+#       prop_no_up_down = n_no_up_down / total_needles,
+#       .groups = "drop"
+#     ) %>% 
+#     arrange(desc(prop_up_down))
+# )
 
 
 # Change function so it catches ANY DECREASE
@@ -1614,6 +1662,51 @@ needle_trend <- needle_trend %>%
     decrease = check_downward(c_across(all_of(weekly_cols)))
   ) %>%
   ungroup()
+
+
+# from which provenances and cohorts?
+(ProvCoh_decrease_summary <- needle_trend %>%
+    group_by(Provenance, Cohort) %>%
+    summarise(
+      total_needles = n(),
+      decrease = sum(decrease),
+      proportion = decrease / total_needles,
+      .groups = "drop"
+    )
+)
+
+(family_decrease_summary <- needle_trend %>%
+    group_by(Family) %>%
+    summarise(
+      total_needles = n(),
+      n_decrease     = sum(decrease == TRUE),
+      n_no_decrease  = sum(decrease == FALSE),
+      prop_decrease  = n_decrease / total_needles,
+      prop_no_decrease = n_no_decrease / total_needles,
+      .groups = "drop"
+    ) %>% 
+    arrange(desc(prop_decrease))
+)
+
+# Barplot of families with decrease needles
+
+family_decrease_summary <- family_decrease_summary %>%
+  mutate(Family = reorder(Family, prop_decrease))
+
+ggplot(family_decrease_summary,
+       aes(x = Family, y = prop_decrease)) +
+  geom_col(fill = "steelblue") +
+  labs(
+    x = "Family",
+    y = "Proportion of needles with decrease trend"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+
+
 
 
 # Rate of score increase ----------------------------------------------------
