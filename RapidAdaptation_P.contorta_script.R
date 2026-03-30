@@ -28,6 +28,7 @@ library(colourpicker)
 library(lme4)
 library(glmmTMB)
 library(emmeans)
+library(plotly)
 
 setwd("C:/Users/luidnn/OneDrive - UKCEH/Documents/R projects/RapidAdaptation")
 
@@ -44,9 +45,9 @@ unique(data$`Date of budset`)
 #' "Position": 1-78             
 #' "Column": 1-8               
 #' "Row": 10                   
-#' "Cohort": Origin/Plantation/Regeneration                 
-#' "Provenance": North Coast/Skeena River/Alaska          
-#' "Provenance region": unknown/20104/32151/46134/47475/48744/52140
+#' "cohort": Origin/Plantation/Regeneration                 
+#' "provenance": North Coast/Skeena River/Alaska          
+#' "provenance region": unknown/20104/32151/46134/47475/48744/52140
 #' "Collection site (UK)": NA/Benmore/Rowens
 #' "Family": e.g., LPNC-UKA5, LPSR - Ca6, etc. (55 families)               
 #' "Status" dead/alive 
@@ -110,15 +111,26 @@ LP <- data %>%
     "date_DBB_2" = "Date measured DBB",
     "height_2" = "Height (cm)...27",
     "date_height_2" = "Date measured",
-    "Cohort" = Cohort
+    "cohort" = Type,
+    "provenance" = Provenance,
+    "Bioassay_0" = "Bioassay leaf weight_2",
+    "dry_mass" = "Dry mass (g)",
+    "root_dry_mass" = "Root dry mass (g)",
+    "shootroot" = "Shoot-to-root ratio (S:R)",
+    "total_dry_mass" = "Total dry mass (g)",
+    "RMF" = "Root mass fraction (RMF)"
   )  %>% 
-  select(-c(`Height (cm)...14`, `Needle length 1 (cm)`, `Needle length 2 (cm)`, Ruler, Offset, Size)) %>% 
+  select(-c(`Height (cm)...14`, `Needle length 1 (cm)`, `Needle length 2 (cm)`, 
+            Ruler, Offset, Size,`Bioassay leaf weight`, `Dry mass > root mass?`)) %>% 
   mutate(across(c(DBB_1, height_1, needle_1, needle_2, height_2, DBB_2),as.numeric)) %>% 
   mutate(height_2 = height_2*10) %>% 
   mutate(Family = ifelse(Family == "sub for LPNC - UKA4 - actually LPNC - UKA1",
                          "LPNC - UKA1",
                          Family))
     # NAs introduced by coercion
+
+colnames(LP)
+head(LP)
 
 # "sub for LPNC - UKA4 - actually LPNC - UKA1"
 length(unique(LP$Family))
@@ -129,9 +141,16 @@ cohort_colors <- c(
   "Regeneration" = "#EEC900"
 )
 
+provenance_colors <- c(
+  "Alaska" = "#EE6363",
+  "North Coast" = "#66CD00",
+  "Skeena River" = "#6495ED"
+)
+
 # Convert into Julian days ------------------------------------------------
 
 # Budset
+
 range(LP$date_budset, na.rm = T)
 #' year/month/day
 #' 2023/09/11 - 2024/05/17 
@@ -148,57 +167,87 @@ range(LP$date_budburst, na.rm = T)
 LP$date_budburst <- as.Date(LP$date_budburst)
 LP$Julian_budburst <- julian(LP$date_budburst, origin = as.Date("2024-02-01"))
 
+# Sense check weights -------------------------------------------------
 
-# Data exploration 
-colnames(LP)
+# plot height vs weight
+
+p<-ggplot(LP, aes(x = total_dry_mass, y = height_2)) +
+  geom_point(aes(text=paste("Block:", Block,
+                            "Position:", Position))) +
+  theme_minimal()
+
+ggplotly(p,tooltip="text")
+
+#' 7/14
+#' 9/44
+#' 10/2
+#' fine, weights make sense
+
+# targets <- tibble(
+#   Block = c(7, 9, 10),
+#   Position = c(14, 44, 2)
+# )
+# result <- LP %>%
+#   semi_join(targets, by = c("Block", "Position")) %>%
+#   select(Block, Position, height_2, total_dry_mass)
+
+p<-ggplot(LP, aes(x = total_dry_mass, y = root_dry_mass)) +
+  geom_point(aes(text=paste("Block:", Block,
+                            "Position:", Position))) +
+  theme_minimal()
+
+ggplotly(p,tooltip="text")
 
 
 # Number of trees per family ------------------------------------------------
 
-# FAMILY
-colnames(LP)
-length(unique(LP$Family))
-# 54 families
+  #' this does not provide valuable information
+  #' Origin does not have real families, just two per provenance I think -> inflates overall number of trees per family
 
-LP %>%  
-  count(Family, sort=TRUE) %>% 
-  ggplot(aes(x=reorder(Family, -n), y=n, fill = n))  +
-  geom_col() +
-  scale_fill_gradient(low="lightblue", high="darkblue") +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle=45, hjust = 1),
-        legend.position = "none") +
-  labs(y="Number of trees", x="Family")
-
+# # FAMILY
+# colnames(LP)
+# length(unique(LP$Family))
+# # 54 families
+# 
+# LP %>%  
+#   count(Family, sort=TRUE) %>% 
+#   ggplot(aes(x=reorder(Family, -n), y=n, fill = n))  +
+#   geom_col() +
+#   scale_fill_gradient(low="lightblue", high="darkblue") +
+#   theme_minimal() +
+#   theme(axis.text.x = element_text(angle=45, hjust = 1),
+#         legend.position = "none") +
+#   labs(y="Number of trees", x="Family")
+# 
 
 # different distribution
 #' 5 families with 50 trees
 #' most families 10 trees
 #' 1 family 12/~8 trees
 
-ggsave("TreesPerFamily.png")
+# ggsave("TreesPerFamily.png")
 
 
 # Number of families per cohort and provenance ----------------------------
 
 family_summary <- LP %>%
-  group_by(Provenance, Cohort) %>%     # group by provenance and cohort
+  group_by(provenance, cohort) %>%     # group by provenance and cohort
   summarise(num_families = n_distinct(Family)) %>%  # count unique families
   ungroup()
 
-ggplot(family_summary, aes(x = Provenance, y = num_families, fill = Cohort)) +
+ggplot(family_summary, aes(x = provenance, y = num_families, fill = cohort)) +
   geom_bar(stat = "identity", position = "dodge") +  # side-by-side bars
   labs(
-    x = "Provenance",
+    x = "provenance",
     y = "Number of Families",
-    fill = "Cohort"
+    fill = "cohort"
   ) +
   scale_fill_manual(
     values = cohort_colors) +
   scale_y_continuous(breaks = seq(0, 10, by = 2)) + 
   theme_minimal()
 
-ggsave("FamiliesProvenanceCohort.png")
+ggsave("Familiesprovenancecohort.png")
 
 # Status across whole experiment ------------------------------------------------------------------
 
@@ -248,10 +297,11 @@ ggplot(LP_long_status, aes(x = factor(year), fill = status)) +
 ggsave("status.png")
 
 
-# Status by Cohort ----------------------------------------------------------
+# Status by cohort ----------------------------------------------------------
 
-StatusCohort <- LP %>% 
-  group_by(Cohort) %>% 
+
+Statuscohort <- LP %>% 
+  group_by(cohort) %>% 
   summarise(
     total = n(),
     alive =sum(status_2 == "alive"),
@@ -260,24 +310,24 @@ StatusCohort <- LP %>%
   )
 
 
-ggplot(StatusCohort,
-       aes(x = Cohort, y = proportion_alive*100, fill = Cohort)) +
+ggplot(Statuscohort,
+       aes(x = cohort, y = proportion_alive*100, fill = cohort)) +
   geom_col() +
   labs(
-    x = "Cohort",
+    x = "cohort",
     y = "Percentage alive"
   ) +
   theme_minimal() +
   scale_fill_manual(
     values = cohort_colors)
 
-ggsave("StatusProvenanceProportion.png")
+ggsave("StatusprovenanceProportion.png")
 
 
-# Status by Provenance ----------------------------------------------------
+# Status by provenance ----------------------------------------------------
 
-StatusProvenance <- LP %>% 
-  group_by(Provenance) %>% 
+Statusprovenance <- LP %>% 
+  group_by(provenance) %>% 
   summarise(
     total = n(),
     alive =sum(status_2 == "alive"),
@@ -285,17 +335,17 @@ StatusProvenance <- LP %>%
     proportion_alive=alive/total
   )
 
-ggplot(StatusProvenance,
-       aes(x = Provenance, y = proportion_alive*100, fill = Provenance)) +
+ggplot(Statusprovenance,
+       aes(x = provenance, y = proportion_alive*100, fill = provenance)) +
   geom_col() +
   labs(
-    x = "Provenance",
+    x = "provenance",
     y = "Percentage alive"
   ) +
   theme_minimal() +
   theme(legend.position = "none")
 
-ggsave("StatusProvenanceProportion.png")
+ggsave("StatusprovenanceProportion.png")
 
 # Status by Block ---------------------------------------------------------
 
@@ -318,23 +368,23 @@ ggsave("StatusByBlock.png")
 
 # Interaction graph -------------------------------------------------------------
 
-# how do provenance AND Cohort influence mortality?
+# how do provenance AND cohort influence mortality?
 
 # summary table for how many originally in each cohort & provenance AND how many survived
 interaction <- LP %>% 
-  count(Provenance, Cohort, status_2) %>% 
+  count(provenance, cohort, status_2) %>% 
   pivot_wider(
     names_from = status_2,
     values_from = n
   ) %>% 
-  left_join(CohortProvenanceCounts %>%  select(Provenance, Cohort, n),
-            by = c("Provenance", "Cohort")) %>% 
+  left_join(cohortprovenanceCounts %>%  select(provenance, cohort, n),
+            by = c("provenance", "cohort")) %>% 
   mutate(prop_alive = alive / n)
 
 
-ggplot(interaction, aes(x = Provenance, y = prop_alive*100, fill = Cohort)) +
+ggplot(interaction, aes(x = provenance, y = prop_alive*100, fill = cohort)) +
   geom_col(position="dodge") +
-  facet_wrap(~ Cohort)  +
+  facet_wrap(~ cohort)  +
   labs(
     y = "Percentage alive"
   ) +
@@ -343,37 +393,37 @@ ggplot(interaction, aes(x = Provenance, y = prop_alive*100, fill = Cohort)) +
 
 ggsave("InteractionPlot.png")
 
-# Group by Provenance:
+# Group by provenance:
 
 interaction <- LP %>% 
-  count(Provenance, Cohort, status_2) %>% 
+  count(provenance, cohort, status_2) %>% 
   pivot_wider(
     names_from = status_2,
     values_from = n,
     values_fill = 0
   ) %>% 
   left_join(
-    CohortProvenanceCounts %>% select(Provenance, Cohort, n),
-    by = c("Provenance", "Cohort")
+    cohortprovenanceCounts %>% select(provenance, cohort, n),
+    by = c("provenance", "cohort")
   ) %>% 
   mutate(prop_alive = alive / n)
 
 ggplot(interaction,
-       aes(x = Provenance,
+       aes(x = provenance,
            y = prop_alive * 100,
-           fill = Cohort)) +
+           fill = cohort)) +
   geom_col(position = position_dodge(width = 0.8)) +
   scale_fill_manual(values = cohort_colors) +
   labs(
     y = "Percentage alive",
-    x = "Provenance",
-    fill = "Cohort"
+    x = "provenance",
+    fill = "cohort"
   ) +
   theme_minimal()
 
 ggsave("InteractionPlot.png")
 
-# Are differences in mortality within Provenances and between Cohorts (cohorts) significant?
+# Are differences in mortality within provenances and between cohorts (cohorts) significant?
 
 # alive = 1, dead = 0
 LP$status_bin <- ifelse(LP$status_2 == "alive", 1, 0)
@@ -381,17 +431,17 @@ LP$status_bin <- ifelse(LP$status_2 == "alive", 1, 0)
 
 # Interaction model -------------------------------------------------------
 
- # start with one explanatory variable (Provenance)
+ # start with one explanatory variable (provenance)
 # Reference level = Alaska
 # Dummy 1 = ProvNC
 # Dummy 2 = ProvSR
 
 
 # LP$fStatus <- factor(LP$status_2)
-# LP$Provenance <- factor(LP$Provenance)
-# LP$Cohort <- factor(LP$Cohort)
+# LP$provenance <- factor(LP$provenance)
+# LP$cohort <- factor(LP$cohort)
 # 
-# model <- glm(fStatus ~ Provenance * Cohort, 
+# model <- glm(fStatus ~ provenance * cohort, 
 #              data = LP, family = binomial)
 # 
 # summary(model)
@@ -399,32 +449,32 @@ LP$status_bin <- ifelse(LP$status_2 == "alive", 1, 0)
 
 # DIFFERENT APPROACH:
 # binomial mixed model (GLMM)
-  #' fixed effects: Cohort & provenance
+  #' fixed effects: cohort & provenance
   #' random effect: family (many families, not main treatment)
 
 LP$status_bin <- ifelse(LP$status_2 == "alive", 1,0)
-model <- glm(status_bin ~ Cohort + Provenance + Cohort:Provenance,
+model <- glm(status_bin ~ cohort + provenance + cohort:provenance,
                     data=LP,
                     family=binomial)
 
 # (generalised linear mixed effects regression?)
-# remove Family because not comparable across Provenance and Cohort (+ (1| Family))
+# remove Family because not comparable across provenance and cohort (+ (1| Family))
 # glmer only if random effect present
-  # Provenance has strongest effect (14% of variation) and Cohort (cohort) also strong effect (11%). Interaction not strong.
+  # provenance has strongest effect (14% of variation) and cohort (cohort) also strong effect (11%). Interaction not strong.
 
 
 # test effects
 anova(model, test = "Chisq")
-  #' Cohort < 0.05 ***
-  #' Provenance < 0.05 ***
-  #' Cohort:Provenance > 0.05
+  #' cohort < 0.05 ***
+  #' provenance < 0.05 ***
+  #' cohort:provenance > 0.05
 
 # I think all assumptions were fulfilled: independent observations, not one group all dead or alive, response is binomial
 
 # GLMER (random effect famil) evaluation:
   #' do survival rates differ among origin, plantation, and regeneration?
   #' do survival rates differ among alaska, north coast, and skeena river?
-  #' does the effect of provenance depend on Cohort?
+  #' does the effect of provenance depend on cohort?
   #' 
   #' npar = numberof parameters used to describe that effect
   #' sum sq = how much variation in survival is explained by that effect (in percent?)
@@ -432,10 +482,10 @@ anova(model, test = "Chisq")
   #' F value = signal-to-noise ratio for that effect
   #' Higher Sum Sq and F value = stronger effect
   #' 
-  #' Cohort explains a meaningful amount of variation in survival 
+  #' cohort explains a meaningful amount of variation in survival 
   #'  -> survival differs noticeably among origin, plantation and regeneration
-  #' Provenance: survival differs strongly among alaska, north coast, and skeena river
-  #' Cohort:Provenance: small. Effect of provenance is largely consistent across Cohorts. (provenance doesn't behave very differently across Cohorts)
+  #' provenance: survival differs strongly among alaska, north coast, and skeena river
+  #' cohort:provenance: small. Effect of provenance is largely consistent across cohorts. (provenance doesn't behave very differently across cohorts)
 
 
 #' drop1(model, test="Chisq")
@@ -443,19 +493,19 @@ anova(model, test = "Chisq")
 #' anova(model)
 #' summary(glmerfit)
 #' 
-#' model2 <- glmmTMB(status_bin ~ Cohort + Provenance + (1|Family),
+#' model2 <- glmmTMB(status_bin ~ cohort + provenance + (1|Family),
 #'                   data=LP,
 #'                   family=binomial)
 #' 
-#' model3 <- glmer(status_bin ~ Provenance * Cohort + (1|Family),
+#' model3 <- glmer(status_bin ~ provenance * cohort + (1|Family),
 #'                 data = LP,
 #'                 family = binomial)
 #' 
 #' install.packages("emmeans")
 #' 
-#' emmeans(model3, pairwise ~ Provenance | Cohort)
-#'   #' none of provenances are significantly different in each Cohort
-#' emmeans(model3, pairwise ~ Cohort | Provenance)
+#' emmeans(model3, pairwise ~ provenance | cohort)
+#'   #' none of provenances are significantly different in each cohort
+#' emmeans(model3, pairwise ~ cohort | provenance)
 
 
 # Status by Family --------------------------------------------------------
@@ -557,44 +607,44 @@ ggplot(StatusFamily, aes(x = reorder(Family, -total), y = total, fill=total)) +
   guides(fill="none") +
   theme(axis.text.x = element_text(angle = 45))
 
-# Distribution -Cohort -------------------------------------------------------
+# Distribution -cohort -------------------------------------------------------
 
-CohortCount <- LP %>% 
-  group_by(Cohort) %>% 
+cohortCount <- LP %>% 
+  group_by(cohort) %>% 
   summarise(n=n(), .groups="drop") %>% 
   mutate(
     x = case_when(
-      Cohort =="Origin" ~1,
-      Cohort=="Plantation"~2,
-      Cohort=="Regeneration"~3
+      cohort =="Origin" ~1,
+      cohort=="Plantation"~2,
+      cohort=="Regeneration"~3
     )
   )
 
-ggplot(LP, aes(x=Cohort, fill=Cohort)) +
+ggplot(LP, aes(x=cohort, fill=cohort)) +
   geom_bar() +
   theme(legend.position = "none") +
   theme_minimal() +
   scale_fill_manual(values = cohort_colors) +
   labs(y="Number of trees") 
 
-ggsave("CohortDistribution.png")
+ggsave("cohortDistribution.png")
 
 
 
-# Distribution - Provenance -------------------------------------------------
+# Distribution - provenance -------------------------------------------------
 
-ProvenanceCount <- LP %>% 
-  group_by(Provenance) %>% 
+provenanceCount <- LP %>% 
+  group_by(provenance) %>% 
   summarise(n=n(), .groups="drop")
 
-# Distribution of Cohorts
-ggplot(ProvenanceCount, aes(x=Provenance, y=n, fill=Provenance)) +
+# Distribution of cohorts
+ggplot(provenanceCount, aes(x=provenance, y=n, fill=provenance)) +
   geom_col(position = position_dodge(width=1)) +
   theme(legend.position = "none") +
   labs(y="Number of trees") +
   theme_minimal()
 
-ggsave("ProvenanceDistribution.png")
+ggsave("provenanceDistribution.png")
 
 
 
@@ -646,7 +696,7 @@ ggplot(LP_long_DBB, aes(x=DBB, fill = DBB_year)) +
     data = median_DBB,
     aes(xintercept = med, color =DBB_year),
     linewidth = 1,
-    lineCohort = "dashed",
+    linecohort = "dashed",
     show.legend = FALSE
   ) +
   scale_color_manual(
@@ -742,7 +792,7 @@ ggplot(LP_long_height, aes(x=height, fill = height_year)) +
     aes(xintercept = med, color =height_year),
     
     linewidth = 1,
-    lineCohort = "dashed",
+    linecohort = "dashed",
     show.legend = FALSE
   ) +
   geom_text(
@@ -808,7 +858,7 @@ count_heights <- LP_height %>%
 ggplot(LP_height, aes(x = height, fill = year)) +
   geom_histogram(alpha = 0.7, position = "identity", bins = 20) +
   geom_vline(data = median_heights, aes(xintercept = median_height, color = year),
-             lineCohort = "dashed", size = 1, show.legend = FALSE) +
+             linecohort = "dashed", size = 1, show.legend = FALSE) +
   geom_text(data = median_heights,
             aes(x = median_height, 
                 y = 150,
@@ -850,51 +900,51 @@ sum(is.na(LP$height_1))
 sum(is.na(LP$height_2))
 
 
-# Comparative boxplot: Height_2 & Provenance
-unique(LP$Provenance)
+# Comparative boxplot: Height_2 & provenance
+unique(LP$provenance)
 
-ggplot(LP, aes(x = Provenance, y = height_2, fill=Provenance)) +
+ggplot(LP, aes(x = provenance, y = height_2, fill=provenance)) +
   geom_boxplot() +
-  labs(title = "Height_2 by Provenance",
-       x = "Provenance",
+  labs(title = "Height_2 by provenance",
+       x = "provenance",
        y = "Height_2") +
   theme_minimal() +
   theme(legend.position = "none")
 
-ggsave("height2_Provenance_boxplot.png")
+ggsave("height2_provenance_boxplot.png")
 
  # Statistical tests
   # is height_2 normally distributed in each provenance lvel?
-ggplot(LP, aes(x = height_2, fill = Provenance)) +
+ggplot(LP, aes(x = height_2, fill = provenance)) +
   geom_histogram(alpha = 0.6, bins = 20) +
-  facet_wrap(~ Provenance) +
-  labs(title = "Height 2 Distribution by Provenance", x = "Height 2", y = "Count") +
+  facet_wrap(~ provenance) +
+  labs(title = "Height 2 Distribution by provenance", x = "Height 2", y = "Count") +
   theme_minimal() +
   theme(legend.position = "none")
 
 # Normality within groups (Shapiro-Wilk test)
 LP %>%
-  group_by(Provenance) %>%
+  group_by(provenance) %>%
   summarise(shapiro_p = shapiro.test(height_2)$p.value)
   # only North Coast is normally distributed
 
-kruskal.test(height_2 ~ Provenance, data = LP)
+kruskal.test(height_2 ~ provenance, data = LP)
    # highly significant
 
-pairwise.wilcox.test(LP$height_2, LP$Provenance, p.adjust.method = "BH")
+pairwise.wilcox.test(LP$height_2, LP$provenance, p.adjust.method = "BH")
   #' NC-Alaska: sig
   #' NC-Skeena: sig
   #' Alaska-Skeena: not sig 
   
 
-# Comparative boxplot: Height & Cohort
-# count how many values for height per Cohort
+# Comparative boxplot: Height & cohort
+# count how many values for height per cohort
 
 
-ggplot(LP, aes(x = Cohort, y = height_2, fill=Cohort)) +
+ggplot(LP, aes(x = cohort, y = height_2, fill=cohort)) +
   geom_boxplot() +
-  labs(title = "Height_2 by Cohort",
-       x = "Cohort",
+  labs(title = "Height_2 by cohort",
+       x = "cohort",
        y = "Height_2") +
   theme_minimal() +
   theme(legend.position = "none") +
@@ -902,41 +952,41 @@ ggplot(LP, aes(x = Cohort, y = height_2, fill=Cohort)) +
     values = c("Origin" = "#F08080", "Plantation" = "#528B8B", "Regeneration" = "#EEC900")
   )
 
-ggsave("height2_Cohort_boxplot.png")
+ggsave("height2_cohort_boxplot.png")
 
 # Statistical tests
-# is height_2 normally distributed in each Cohort lvel?
+# is height_2 normally distributed in each cohort lvel?
 
-ggplot(LP, aes(x = height_2, fill = Cohort)) +
+ggplot(LP, aes(x = height_2, fill = cohort)) +
   geom_histogram(alpha = 0.6, bins = 20) +
-  facet_wrap(~ Cohort) +
-  labs(title = "Height 2 Distribution by Cohort", x = "Height 2", y = "Count") +
+  facet_wrap(~ cohort) +
+  labs(title = "Height 2 Distribution by cohort", x = "Height 2", y = "Count") +
   theme_minimal() +
   theme(legend.position = "none")
 
 # Normality within groups (Shapiro-Wilk test)
 LP %>%
-  group_by(Cohort) %>%
+  group_by(cohort) %>%
   summarise(shapiro_p = shapiro.test(height_2)$p.value)
 # only Regen is normally distributed
 
-kruskal.test(height_2 ~ Cohort, data = LP)
+kruskal.test(height_2 ~ cohort, data = LP)
 # highly significant
 
-pairwise.wilcox.test(LP$height_2, LP$Cohort, p.adjust.method = "BH")
+pairwise.wilcox.test(LP$height_2, LP$cohort, p.adjust.method = "BH")
   #' all sig
 
 
 
 # BUDSET -------------------------------------------------------------
 
-# PROVENANCE
+# provenance
 
-# Boxplot_ Budset x Provenance
-ggplot(LP, aes(x = Provenance, y = Julian_budset)) +
+# Boxplot_ Budset x provenance
+ggplot(LP, aes(x = provenance, y = Julian_budset)) +
   geom_boxplot(fill = "steelblue") +
-  labs(title = "Budset Timing by Provenance",
-       x = "Provenance",
+  labs(title = "Budset Timing by provenance",
+       x = "provenance",
        y = "Julian Day of Budset") +
   theme_minimal()
 
@@ -945,31 +995,31 @@ ggsave("budset_boxplot.png")
 # Statistical tests
 # is budset normally distributed in each provenance level?
 
-ggplot(LP, aes(x = Julian_budset, fill = Provenance)) +
+ggplot(LP, aes(x = Julian_budset, fill = provenance)) +
   geom_histogram(alpha = 0.6, bins = 20) +
-  facet_wrap(~ Cohort) +
-  labs(title = "Height 2 Distribution by Provenance", x = "Budset (Julian days", y = "Count") +
+  facet_wrap(~ cohort) +
+  labs(title = "Height 2 Distribution by provenance", x = "Budset (Julian days", y = "Count") +
   theme_minimal() +
   theme(legend.position = "none")
   # nope
 
 # Normality within groups (Shapiro-Wilk test)
 LP %>%
-  group_by(Provenance) %>%
+  group_by(provenance) %>%
   summarise(shapiro_p = shapiro.test(Julian_budset)$p.value)
 # nope
 
-kruskal.test(Julian_budset ~ Provenance, data = LP)
+kruskal.test(Julian_budset ~ provenance, data = LP)
 # just about significant
 
-pairwise.wilcox.test(LP$Julian_budset, LP$Provenance, p.adjust.method = "BH")
+pairwise.wilcox.test(LP$Julian_budset, LP$provenance, p.adjust.method = "BH")
 #' North Coast-Skeena: somewhat sig
 
 
 
-# Density plot: Budset x Provenance
+# Density plot: Budset x provenance
 
-ggplot(LP, aes(x = Julian_budset, color = Provenance, fill = Provenance)) +
+ggplot(LP, aes(x = Julian_budset, color = provenance, fill = provenance)) +
   geom_density(alpha = 0.3) +
   labs(x = "Budset (Julian days)",
        y = "Density") +
@@ -981,43 +1031,43 @@ ggplot(LP, aes(x = Julian_budset, color = Provenance, fill = Provenance)) +
 
 ggsave("budset_provenance_density.png")
 
-# Cohort
+# cohort
 
-# Boxplot: Budset x Cohort
+# Boxplot: Budset x cohort
 
-ggplot(LP, aes(x = Cohort, y = Julian_budset)) +
+ggplot(LP, aes(x = cohort, y = Julian_budset)) +
   geom_boxplot(fill = "steelblue") +
-  labs(x = "Cohort",
+  labs(x = "cohort",
        y = "Julian Day of Budset") +
   theme_minimal()
 
-ggsave("budset_Cohort_boxplot.png")
+ggsave("budset_cohort_boxplot.png")
 
   # weird, origin has no values?
-range(LP$Julian_budset[LP$Cohort=="Origin"], na.rm = T)
+range(LP$Julian_budset[LP$cohort=="Origin"], na.rm = T)
   # 1-125
 
-sum(is.na(LP$Julian_budset[LP$Cohort=="Origin"]))
+sum(is.na(LP$Julian_budset[LP$cohort=="Origin"]))
   # 115 NAs (trees without budset value) -> 185 trees have values
   # 38% don't have budset values
 
 
 # Normality within groups (Shapiro-Wilk test)
 LP %>%
-  group_by(Cohort) %>%
+  group_by(cohort) %>%
   summarise(shapiro_p = shapiro.test(Julian_budset)$p.value)
 # nope
 
-kruskal.test(Julian_budset ~ Cohort, data = LP)
+kruskal.test(Julian_budset ~ cohort, data = LP)
 # very significant
 
-pairwise.wilcox.test(LP$Julian_budset, LP$Cohort, p.adjust.method = "BH")
+pairwise.wilcox.test(LP$Julian_budset, LP$cohort, p.adjust.method = "BH")
 #' all but Regen-Plant = sig
 
 
-# Density plot: Budset x Cohort
+# Density plot: Budset x cohort
 
-ggplot(LP, aes(x = Julian_budset, color = Cohort, fill = Cohort)) +
+ggplot(LP, aes(x = Julian_budset, color = cohort, fill = cohort)) +
   geom_density(alpha = 0.3) +
   labs(x = "Budset (Julian days)",
        y="Density") +
@@ -1026,47 +1076,47 @@ ggplot(LP, aes(x = Julian_budset, color = Cohort, fill = Cohort)) +
   legend.position = c(0.95,1),
   legend.justification = c("right", "top"))
 
-ggsave("budset_Cohort_density.png")
+ggsave("budset_cohort_density.png")
 
 
 # BUDBURST ----------------------------------------------------------------
 
-# PROVENANCE
+# provenance
 
-sum(is.na(LP$Julian_budburst[LP$Provenance=="North Coast"]))
+sum(is.na(LP$Julian_budburst[LP$provenance=="North Coast"]))
 
 
 
-# Boxplot_ Budburst x Provenance
-ggplot(LP, aes(x = Provenance, y = Julian_budburst)) +
+# Boxplot_ Budburst x provenance
+ggplot(LP, aes(x = provenance, y = Julian_budburst)) +
   geom_boxplot(fill = "steelblue") +
   labs(
-       x = "Provenance",
+       x = "provenance",
        y = "Julian Day of Budburst") +
   theme_minimal()
 
-ggsave("budburst_Provenance_boxplot.png")
+ggsave("budburst_provenance_boxplot.png")
 
 # Statistical tests
 
 # Normality within groups (Shapiro-Wilk test)
 LP %>%
-  group_by(Provenance) %>%
+  group_by(provenance) %>%
   summarise(shapiro_p = shapiro.test(Julian_budburst)$p.value)
 # nope
 
-kruskal.test(Julian_budburst ~ Provenance, data = LP)
+kruskal.test(Julian_budburst ~ provenance, data = LP)
 # significant
 
-pairwise.wilcox.test(LP$Julian_budburst, LP$Provenance, p.adjust.method = "BH")
+pairwise.wilcox.test(LP$Julian_budburst, LP$provenance, p.adjust.method = "BH")
 #' NC-Alaska: 0.013
 #' Skeena-NC: 0.01
 
 
 
-# Density plot: Budburst x Provenance
+# Density plot: Budburst x provenance
 
-ggplot(LP, aes(x = Julian_budburst, color = Provenance, fill = Provenance)) +
+ggplot(LP, aes(x = Julian_budburst, color = provenance, fill = provenance)) +
   geom_density(alpha = 0.3) +
   labs(x = "Budburst (Julian days)",
        y = "Density") +
@@ -1078,31 +1128,31 @@ ggplot(LP, aes(x = Julian_budburst, color = Provenance, fill = Provenance)) +
 
 ggsave("budburst_provenance_density.png")
 
-# Cohort
+# cohort
 
-# Boxplot: Budburst x Cohort
+# Boxplot: Budburst x cohort
 
-ggplot(LP, aes(x = Cohort, y = Julian_budburst)) +
+ggplot(LP, aes(x = cohort, y = Julian_budburst)) +
   geom_boxplot(fill = "steelblue") +
-  labs(x = "Cohort",
+  labs(x = "cohort",
        y = "Julian Day of Budburst") +
   theme_minimal()
 
-ggsave("budburst_Cohort_boxplot.png")
+ggsave("budburst_cohort_boxplot.png")
 
 # Normality within groups (Shapiro-Wilk test)
 LP %>%
-  group_by(Cohort) %>%
+  group_by(cohort) %>%
   summarise(shapiro_p = shapiro.test(Julian_budburst)$p.value)
 # nope
 
-kruskal.test(Julian_budburst ~ Cohort, data = LP)
+kruskal.test(Julian_budburst ~ cohort, data = LP)
 # not significant
 
 
-# Density plot: Budburst x Cohort
+# Density plot: Budburst x cohort
 
-ggplot(LP, aes(x = Julian_budburst, color = Cohort, fill = Cohort)) +
+ggplot(LP, aes(x = Julian_budburst, color = cohort, fill = cohort)) +
   geom_density(alpha = 0.3) +
   labs(x = "Budburst (Julian day)",
        y="Density") +
@@ -1111,7 +1161,7 @@ ggplot(LP, aes(x = Julian_budburst, color = Cohort, fill = Cohort)) +
     legend.position = c(0.95,1),
     legend.justification = c("right", "top"))
 
-ggsave("budburst_Cohort_density.png")
+ggsave("budburst_cohort_density.png")
 
     
 
@@ -1130,7 +1180,7 @@ LP$date_budburst <- as.Date(LP$date_budburst)
 LP$Julian_budburst_2 <- julian(LP$date_budburst, origin = as.Date("2023/06/20"))   
     
 # BUDSET
-ggplot(LP, aes(x = Julian_budset_2, color = Provenance, fill = Provenance)) +
+ggplot(LP, aes(x = Julian_budset_2, color = provenance, fill = provenance)) +
   geom_density(alpha = 0.3) +
   labs(x = "Budset (Julian days)",
        y = "Density") +
@@ -1140,14 +1190,14 @@ ggplot(LP, aes(x = Julian_budset_2, color = Provenance, fill = Provenance)) +
     legend.justification = c("right", "top")
   )
 
-# TOGETHER - Provenance
+# TOGETHER - provenance
 ggplot() +
   geom_density(data = LP, 
-               aes(x = Julian_budset_2, color = Provenance, fill = Provenance), 
+               aes(x = Julian_budset_2, color = provenance, fill = provenance), 
                alpha = 0.3) +
   geom_density(data = LP, 
-               aes(x = Julian_budburst_2, color = Provenance, fill = Provenance), 
-               alpha = 0.3, lineCohort = "dashed") +
+               aes(x = Julian_budburst_2, color = provenance, fill = provenance), 
+               alpha = 0.3, linecohort = "dashed") +
   labs(x = "Julian days", y = "Density") +
   theme_minimal() +
   theme(
@@ -1155,16 +1205,16 @@ ggplot() +
     legend.justification = c("right", "top")
   )
 
-ggsave("BS&BB_Provenance.png")
+ggsave("BS&BB_provenance.png")
 
-# TOGETHER - Cohort
+# TOGETHER - cohort
 ggplot() +
   geom_density(data = LP, 
-               aes(x = Julian_budset_2, color = Cohort, fill = Cohort), 
+               aes(x = Julian_budset_2, color = cohort, fill = cohort), 
                alpha = 0.3) +
   geom_density(data = LP, 
-               aes(x = Julian_budburst_2, color = Cohort, fill = Cohort), 
-               alpha = 0.3, lineCohort = "dashed") +
+               aes(x = Julian_budburst_2, color = cohort, fill = cohort), 
+               alpha = 0.3, linecohort = "dashed") +
   labs(x = "Julian days", y = "Density") +
   theme_minimal() +
   theme(
@@ -1172,7 +1222,7 @@ ggplot() +
     legend.justification = c("right", "top")
   )
 
-ggsave("BS&BB_Cohort.png")
+ggsave("BS&BB_cohort.png")
 
 # Difference between budset and budburst
 LP$Julian_difference <- LP$Julian_budburst_2 - LP$Julian_budset_2
@@ -1258,7 +1308,7 @@ as.Date("2023-06-20") + 225
 as.Date("2023-06-20") + 250
 # Budburst increase date: 25.4.2024
 
-# Per Cohort
+# Per cohort
 # first group dataset by trees from same cohort
 
 trees_long <- LP %>%
@@ -1277,9 +1327,9 @@ trees_long <- LP %>%
 trees_long <- trees_long %>%
   filter(!is.na(Julian_day))
 
-# grouped by Cohort, Provenance & Phenology (first BB then BS)
+# grouped by cohort, provenance & Phenology (first BB then BS)
 cumul_BSBB <- trees_long %>%
-  group_by(Cohort, Provenance, Phenology) %>%
+  group_by(cohort, provenance, Phenology) %>%
   arrange(Julian_day, .by_group = TRUE) %>%
   mutate(cumulative = row_number()) %>%
   mutate(cumulative_prop = cumulative / max(cumulative)) %>%
@@ -1291,7 +1341,7 @@ ggplot(cumul_BSBB,
            y = cumulative,
            color = Phenology)) +
   geom_line(size = 1.1) +
-  facet_grid(Cohort ~ Provenance) +
+  facet_grid(cohort ~ provenance) +
   scale_color_manual(values = c("Julian_budset_2" = "forestgreen",
                                 "Julian_budburst_2" = "orange")) +
   labs(
@@ -1302,7 +1352,7 @@ ggplot(cumul_BSBB,
   theme_minimal() +
   theme(legend.position = "none")
 
-ggsave("PhenologyByProvenanceCohort.png")
+ggsave("PhenologyByprovenancecohort.png")
 
 
 # # BUDSET
@@ -1352,7 +1402,7 @@ MetData <- list.files(
   pattern = "//.csv$",   
   full.names = TRUE
 ) %>%
-  map_dfr(~ read_csv(.x, col_Cohorts = cols(
+  map_dfr(~ read_csv(.x, col_cohorts = cols(
     `Report Date / Time` = col_datetime(format = "%Y-%m-%d %H:%M:%S")  # adjust format if needed
   )))
 
@@ -1529,17 +1579,15 @@ ggplot(Bud_temp, aes(x = Julian_Day_Met)) +
 
 
 # use new corrected AUDPS values & needle AUDPS average per tree
-controls <- read_excel("P:/07793_newLEAF/Workfiles/WP4/Bioassay 2025/Pinus_contorta_bioassay_AP_AUDPS.xlsx", sheet = "Controls")
+controls <- read_excel("P:/07793_newLEAF/Workfiles/WP4/Bioassay 2025/Pinus_contorta_bioassay_AP_AUDPS_updated.xlsx", sheet = "Controls")
 
-bioassay <- read_excel("P:/07793_newLEAF/Workfiles/WP4/Bioassay 2025/Pinus_contorta_bioassay_AP_AUDPS.xlsx", sheet = "RESULTS")
+bioassay <- read_excel("P:/07793_newLEAF/Workfiles/WP4/Bioassay 2025/Pinus_contorta_bioassay_AP_AUDPS_updated.xlsx", sheet = "RESULTS")
 weekly_cols <- c("Bd0","Bd7","Bd14","Bd21","Bd28","Bd35","Bd42","Bd49","Bd67")
 
 # Convert weekly columns to numeric
-bioassay <- bioassay %>%
-  mutate(across(all_of(weekly_cols), as.numeric))
-
 # Clean up CD0 and CD49, and filter out rows without valid data
-bioassay_clean <- bioassay %>%
+bioassay <- bioassay %>%
+  mutate(across(all_of(weekly_cols), as.numeric)) %>% 
   filter(!is.na(Family), Family != "NA", rowSums(!is.na(across(all_of(weekly_cols)))) > 0) %>%
   mutate(
     CD0_numeric = as.numeric(na_if(CD0_numeric, "NA")),
@@ -1554,18 +1602,18 @@ bioassay_clean <- bioassay %>%
     CD49_numeric = factor(CD49_numeric, levels = c(1,2,3,4,5,6), labels = c("Green", "Yellow", "Straw", "Red", "Dull-green", "Brown"))
   )
 
-max_value <- max(bioassay_clean[ , grepl("^Bd", names(bioassay_clean))], na.rm = TRUE)
+max_value <- max(bioassay[ , grepl("^Bd", names(bioassay))], na.rm = TRUE)
 
 ## Needle Colour at Day 0
 
-ggplot(bioassay_clean, aes(x = Cohort, fill = CD0_numeric)) +
+ggplot(bioassay, aes(x = cohort, fill = CD0_numeric)) +
   geom_bar(position = "fill") +
-  facet_wrap(~Provenance, scales = "free_x", drop = TRUE) +
+  facet_wrap(~provenance, scales = "free_x", drop = TRUE) +
   scale_y_continuous(labels = scales::percent_format()) +
   scale_fill_manual(values = c("#5F8A1E", "#F7D654", "#F0EB9E", "#D19797")) +
   theme_bw() +
   labs(
-    x = "Provenance",
+    x = "provenance",
     y = "Percentage of needles",
     fill = "Needle colour at Day 0"
   ) +
@@ -1578,14 +1626,14 @@ c("#D19797", "#F0EB9E", "#F7D654", "#5F8A1E","#377004", "#7A2F0A")
 
 
 ## Needle Colour at Day 49
-ggplot(bioassay_clean %>% filter(!is.na(CD49_numeric)), aes(x = Cohort, fill = CD49_numeric)) +
+ggplot(bioassay %>% filter(!is.na(CD49_numeric)), aes(x = cohort, fill = CD49_numeric)) +
   geom_bar(position = "fill") +
-  facet_wrap(~Provenance, scales = "free_x", drop = TRUE) +
+  facet_wrap(~provenance, scales = "free_x", drop = TRUE) +
   scale_y_continuous(labels = scales::percent_format()) +
   scale_fill_manual(values = c("#5F8A1E", "#F7D654", "#F0EB9E", "#D19797", "darkgreen", "#7A2F0A")) +
   theme_bw() +
   labs(
-    x = "Cohort",
+    x = "cohort",
     y = "Percentage of needles",
     fill = "Needle colour at Day 49"
   ) +
@@ -1601,10 +1649,10 @@ bioassay <- bioassay %>%
   mutate(AUDPS = as.numeric(AUDPS))
 
 # tree_needle_summary <- bioassay %>%
-#   filter(!is.na(Cohort)) %>% 
+#   filter(!is.na(cohort)) %>% 
 #   mutate(AUDPS = as.numeric(AUDPS)) %>% 
 #   filter(!is.na(AUDPS)) %>% 
-#   group_by(id, Cohort, Provenance) %>%
+#   group_by(id, cohort, provenance) %>%
 #   summarise(
 #     n_needles = sum(!is.na(AUDPS)),
 #     mean_AUDPS = mean(AUDPS, na.rm = TRUE),
@@ -1615,12 +1663,12 @@ bioassay <- bioassay %>%
 #   ) %>% 
 #   filter(n_needles >= 2)
 
-# same with adjusted AUDPS values (bioassay_clean)
-tree_needle_summary <- bioassay_clean %>%
-  filter(!is.na(Cohort)) %>% 
+# same with adjusted AUDPS values (bioassay)
+tree_needle_summary <- bioassay %>%
+  filter(!is.na(cohort)) %>% 
   mutate(AUDPS_adj = as.numeric(AUDPS)) %>% 
   filter(!is.na(AUDPS_adj)) %>% 
-  group_by(id, Cohort, Provenance) %>%
+  group_by(id, cohort, provenance) %>%
   summarise(
     n_needles = sum(!is.na(AUDPS_adj)),
     mean_AUDPS_adj = mean(AUDPS_adj),
@@ -1633,12 +1681,12 @@ tree_needle_summary <- bioassay_clean %>%
 
 
 # # PLOT: How different are needle values per tree?
-# ggplot(tree_needle_summary, aes(x = Cohort, y = mean_AUDPS)) +
+# ggplot(tree_needle_summary, aes(x = cohort, y = mean_AUDPS)) +
 #   geom_point(alpha = 0.7) +
 #   geom_errorbar(aes(ymin = min_AUDPS, ymax = max_AUDPS), width = 0.2, alpha = 0.7) +
-#   facet_wrap(~ Provenance) +
+#   facet_wrap(~ provenance) +
 #   labs(
-#     x = "Cohort",
+#     x = "cohort",
 #     y = "AUDPS per tree (mean ± range)",
 #     title = "Per-tree AUDPS with needle-level range"
 #   ) +
@@ -1647,13 +1695,13 @@ tree_needle_summary <- bioassay_clean %>%
 
 
 
-# MEAN AUDPS PER TREE AND COHORT -> USE AUDPS_ADJ & ADD PROVENANCE GROUPING!
-ggplot(tree_needle_summary, aes(x=Cohort, y=mean_AUDPS)) +
+# MEAN AUDPS PER TREE AND cohort -> USE AUDPS_ADJ & ADD provenance GROUPING!
+ggplot(tree_needle_summary, aes(x=cohort, y=mean_AUDPS)) +
   geom_boxplot(outlier.alpha=0.3) +
-  facet_wrap(~Provenance, scales = "free_x", drop = TRUE) +
+  facet_wrap(~provenance, scales = "free_x", drop = TRUE) +
   geom_jitter(width=0.15, alpha = 0.4) +
   labs(
-    x = "Cohort",
+    x = "cohort",
     y = "Mean AUDPS per tree") +
   theme_minimal()
 
@@ -1664,7 +1712,7 @@ ggplot(tree_needle_summary, aes(x=Cohort, y=mean_AUDPS)) +
 #' facet by population, family, cohort
 
 # long format:
-bioassay_long <- bioassay_clean %>% 
+bioassay_long <- bioassay %>% 
   pivot_longer(
     cols = starts_with("Bd"),
     names_to = "Needle",
@@ -1674,12 +1722,12 @@ bioassay_long <- bioassay_clean %>%
     Needle = as.numeric(gsub("Bd", "", Needle))
   )
 
-ggplot(bioassay_long, aes(x = Needle, y = Score, group = Uniqueid, color = Provenance)) +
+ggplot(bioassay_long, aes(x = Needle, y = Score, group = Uniqueid, color = provenance)) +
   geom_line(alpha = 0.3) +  # light lines for individual needles
-  stat_summary(aes(group = Provenance), fun = mean, geom = "line", size = 1.2) +  # mean per provenance
-  facet_wrap(~ Cohort) +
+  stat_summary(aes(group = provenance), fun = mean, geom = "line", size = 1.2) +  # mean per provenance
+  facet_wrap(~ cohort) +
   theme_minimal() +
-  labs(title = "Needle score progression per Provenance and Cohort",
+  labs(title = "Needle score progression per provenance and cohort",
        x = "Time (days)",
        y = "% Brown")
 
@@ -1703,7 +1751,7 @@ ggsave("Needle_progression.png")
 # }
 # 
 # # apply function and make new column to store evaluation of function
-# needle_trend <- bioassay_clean %>%
+# needle_trend <- bioassay %>%
 #   rowwise() %>%
 #   mutate(
 #     goes_up_down = up_then_down(c_across(all_of(weekly_cols)))
@@ -1717,7 +1765,7 @@ ggsave("Needle_progression.png")
 # 
 # # from which provenances and cohorts?
 # (up_down_table <- needle_trend %>%
-#     group_by(Provenance, Cohort) %>%
+#     group_by(provenance, cohort) %>%
 #     summarise(
 #       total_needles = n(),
 #       up_then_down = sum(goes_up_down),
@@ -1768,7 +1816,7 @@ needle_trend <- needle_trend %>%
 
 # from which provenances and cohorts?
 (ProvCoh_decrease_summary <- needle_trend %>%
-    group_by(Provenance, Cohort) %>%
+    group_by(provenance, cohort) %>%
     summarise(
       total_needles = n(),
       decrease = sum(decrease),
@@ -1832,10 +1880,10 @@ needle_inc <- needle_inc %>%
   ) %>%
   ungroup()
 
-head(needle_inc %>% select(Family, Cohort, Provenance, increase_rate))
+head(needle_inc %>% select(Family, cohort, provenance, increase_rate))
 
 # compare between provenance and cohort - boxplot
-ggplot(needle_inc, aes(x = Provenance, y = increase_rate, fill = Cohort)) +
+ggplot(needle_inc, aes(x = provenance, y = increase_rate, fill = cohort)) +
   geom_boxplot() +
   theme_minimal() +
   scale_fill_manual(
@@ -1851,17 +1899,17 @@ ggsave("Increase_rate.png")
 # AUDPS -------------------------------------------------------------------
 ## AUDPS boxplot
 
-bioassay_clean$Provenance <- factor(
-  bioassay_clean$Provenance, 
+bioassay$provenance <- factor(
+  bioassay$provenance, 
   levels = c("Alaska", "North Coast", "Skeena River")
 )
 
-bioassay_clean$Cohort <- factor(
-  bioassay_clean$Cohort, 
+bioassay$cohort <- factor(
+  bioassay$cohort, 
   levels = c("Origin", "Plantation", "Regeneration")
 )
 
-bioassay_clean$AUDPS <- as.numeric(bioassay_clean$AUDPS)
+bioassay$AUDPS <- as.numeric(bioassay$AUDPS)
 
 
 # Adjust AUDPS based on Control values:
@@ -1894,7 +1942,7 @@ controls_mean <- controls_clean %>%
 
 
 # Adjust AUPDS
-bioassay_clean <- bioassay_clean %>% 
+bioassay <- bioassay %>% 
   mutate(
     AUDPS_adj = case_when(
       AUDPS == 0.0 ~0,
@@ -1906,8 +1954,8 @@ bioassay_clean <- bioassay_clean %>%
   )
 
 # adjusted 
-ggplot(bioassay_clean,aes(x=Provenance, y=AUDPS_adj, fill=Cohort, 
-                          group=interaction(Provenance, Cohort))) +
+ggplot(bioassay,aes(x=provenance, y=AUDPS_adj, fill=cohort, 
+                          group=interaction(provenance, cohort))) +
   geom_boxplot() +
   scale_y_continuous(n.breaks = 10) +
   theme_minimal() +
@@ -1921,7 +1969,7 @@ ggplot(bioassay_clean,aes(x=Provenance, y=AUDPS_adj, fill=Cohort,
 ggsave("AUDPS_adj_boxplot.png")
 
 # how have means changed for each bioassay
-bioassay_clean %>%
+bioassay %>%
   group_by(Bioassay) %>%
   summarise(
     n_total = n(),
@@ -1935,8 +1983,8 @@ bioassay_clean %>%
   #' does AUDPS differ between provenance, cohort and/or interaction between both?
 
 anova_mod <- aov(
-  AUDPS_adj ~Provenance * Cohort + Bioassay,
-  data=bioassay_clean
+  AUDPS_adj ~provenance * cohort + Bioassay,
+  data=bioassay
 )
 summary(anova_mod)
   #' provenance significant
@@ -1948,12 +1996,12 @@ shapiro.test(residuals(anova_mod))
 # null hypothesis: variable is normally distributed
 # reject null hypothesis if p < 0.05 => variable is not normally distributed
 
-ggplot(bioassay_clean, aes(x = AUDPS_adj_norm_log)) +
+ggplot(bioassay, aes(x = AUDPS_adj_norm_log)) +
   geom_histogram( fill = "steelblue", color = "black") +
   theme_minimal() +
   labs( x = "AUDPS_adj", y = "Count")
 
-ggplot(bioassay_clean, aes(sample = AUDPS_adj)) +
+ggplot(bioassay, aes(sample = AUDPS_adj)) +
   stat_qq() +
   stat_qq_line() +
   theme_minimal() +
@@ -1961,8 +2009,8 @@ ggplot(bioassay_clean, aes(sample = AUDPS_adj)) +
 
 # normality different by group?
 
-bioassay_clean %>%
-  group_by(Provenance, Cohort) %>%
+bioassay %>%
+  group_by(provenance, cohort) %>%
   summarise(
     shapiro_p = shapiro.test(AUDPS_adj)$p.value
   )
@@ -1971,9 +2019,9 @@ bioassay_clean %>%
 # log transform AUDPS_adj values
 # some values negative after control-adjusting
 # but 0 need to stay 0
-shift <- abs(min(bioassay_clean$AUDPS_adj, na.rm = TRUE)) + 1
+shift <- abs(min(bioassay$AUDPS_adj, na.rm = TRUE)) + 1
 
-bioassay_clean <- bioassay_clean %>%
+bioassay <- bioassay %>%
   mutate(
     AUDPS_adj_log = case_when(
       AUDPS_adj == 0      ~ 0,          # keep zeros
@@ -1982,14 +2030,14 @@ bioassay_clean <- bioassay_clean %>%
   )
 
 # test for normality again:
-ggplot(bioassay_clean, aes(sample = AUDPS_adj_log)) +
+ggplot(bioassay, aes(sample = AUDPS_adj_log)) +
   stat_qq() +
   stat_qq_line() +
   theme_minimal() +
   labs(title = "Q-Q Plot of AUDPS_adj_log")
 
-bioassay_clean %>%
-  group_by(Provenance, Cohort) %>%
+bioassay %>%
+  group_by(provenance, cohort) %>%
   summarise(
     shapiro_p = shapiro.test(AUDPS_adj_log)$p.value
   )
@@ -1999,26 +2047,26 @@ bioassay_clean %>%
 
 # Normalisation -----------------------------------------------------------
 
-min_val <- min(bioassay_clean$AUDPS_adj, na.rm = TRUE)
-max_val <- max(bioassay_clean$AUDPS_adj, na.rm = TRUE)
+min_val <- min(bioassay$AUDPS_adj, na.rm = TRUE)
+max_val <- max(bioassay$AUDPS_adj, na.rm = TRUE)
 
 
 
-bioassay_clean$AUDPS_adj_norm <- 100 * (bioassay_clean$AUDPS_adj - min_val) / (max_val - min_val)
+bioassay$AUDPS_adj_norm <- 100 * (bioassay$AUDPS_adj - min_val) / (max_val - min_val)
 # zeros are now 2.0935059
 
 # make sure 2.0935059 is reserved for actual original zeros
-zeros <- subset(bioassay_clean, abs(AUDPS_adj_norm - 2.0935059) < 1e-6,
+zeros <- subset(bioassay, abs(AUDPS_adj_norm - 2.0935059) < 1e-6,
        select = c(AUDPS_adj, AUDPS_adj_norm))
 
-ggplot(bioassay_clean, aes(sample = AUDPS_adj_norm)) +
+ggplot(bioassay, aes(sample = AUDPS_adj_norm)) +
   stat_qq() +
   stat_qq_line() +
   theme_minimal() +
   labs(title = "Q-Q Plot of AUDPS_adj_norm")
 
-bioassay_clean %>%
-  group_by(Provenance, Cohort) %>%
+bioassay %>%
+  group_by(provenance, cohort) %>%
   summarise(
     shapiro_p = shapiro.test(AUDPS_adj_norm)$p.value
   )
@@ -2026,24 +2074,24 @@ bioassay_clean %>%
 
 # log transformation on adjusted and normalised values
 
-bioassay_clean$AUDPS_adj_norm_log <- log(bioassay_clean$AUDPS_adj_norm + 1)
+bioassay$AUDPS_adj_norm_log <- log(bioassay$AUDPS_adj_norm + 1)
 
-ggplot(bioassay_clean, aes(sample = AUDPS_adj_norm_log)) +
+ggplot(bioassay, aes(sample = AUDPS_adj_norm_log)) +
   stat_qq() +
   stat_qq_line() +
   theme_minimal() +
   labs(title = "Q-Q Plot of AUDPS_adj_norm_log")
 
-bioassay_clean %>%
-  group_by(Provenance, Cohort) %>%
+bioassay %>%
+  group_by(provenance, cohort) %>%
   summarise(
     shapiro_p = shapiro.test(AUDPS_adj_norm_log)$p.value
   )
 
 # as normal as it gets.
 
-ggplot(bioassay_clean,aes(x=Provenance, y=AUDPS_adj_norm_log, fill=Cohort, 
-                          group=interaction(Provenance, Cohort))) +
+ggplot(bioassay,aes(x=provenance, y=AUDPS_adj_norm_log, fill=cohort, 
+                          group=interaction(provenance, cohort))) +
   geom_boxplot() +
   scale_y_continuous(n.breaks = 10) +
   theme_minimal() +
@@ -2068,22 +2116,91 @@ install.packages("lmerTest")
 library(lmerTest)
 
 # Refit the model using lmerTest
-model <- lmer(AUDPS_adj_norm_log ~ Provenance * Cohort + (1 | Bioassay),
-              data = bioassay_clean)
+model <- lmer(AUDPS_adj_norm_log ~ provenance * cohort + (1 | Bioassay),
+              data = bioassay)
 
 # Get summary with p-values
 summary(model)
 
 
-model <- lmer(AUDPS_adj_norm_log ~Provenance * Cohort + (1 | Bioassay),
-              data = bioassay_clean)
-  #' Provenance North Coast & Cohort Regeneration = significant predictors of AUDPS value?
+model <- lmer(AUDPS_adj_norm_log ~provenance * cohort + (1 | Bioassay),
+              data = bioassay)
+  #' provenance North Coast & cohort Regeneration = significant predictors of AUDPS value?
 
 
 
 
+# HEIGHT:WEIGHT  -------------------------------------------------------------
+
+# Height-weight relationship based on cohort:
+ggplot(LP,aes(x=total_dry_mass, y=height_2, color=cohort)) +
+  geom_point() +
+  geom_smooth(method="lm", se=FALSE) +
+  theme_minimal() +
+  scale_fill_manual(
+    values = c("Origin" = "#F08080", "Plantation" = "#528B8B", "Regeneration" = "#EEC900"))
+ggsave("HxW_cohort.png")
+
+HxW_int_cohort_mod <- lm(height_2~total_dry_mass * cohort, data=LP)
+summary(HxW_int_cohort_mod)
+  #' reference group = "origin"
+  #' total dry mass = effect of mass on height in Origin cohort -> significant because mass does dictate height
+    #' slope for plantation: 21.589 - 2.579 = 19.01
+  #' interaction terms:
+    #' height x weight relationship (slope) in plantation not sig diff from that in origin
+    #' height x weight relationship (the effect of mass on height) in regen IS sig diff from that in origin (shallower slope = tend to be taller for same weight)
+
+# Is slope different between Plantation and Regeneration?
+LP$cohort <- relevel(as.factor(LP$cohort), ref="Plantation")
+  # Plantation = reference level
+HxW_int_cohort_mod_2 <- lm(height_2~total_dry_mass * cohort, data=LP)
+summary(HxW_int_cohort_mod_2)
+  #' no difference in slopes between Regen and Plantation
+  #' Plantation: every 1 unit increase in mass -> height increases by 19 units (slope) -> if significant = mass is positively related to height in Plantation
+  #' cohortOrigin: difference in intercept between Origin and Plantation (when total mass = 0)
+    #' at mass = 0, Origin plants predicted to be 13.887 units shorter than Plantation plants = significant
+  #' interaction terms: whether slopes between regen and plantation are different = not significant
 
 
+# # compare interaction with no interaction model:
+# HxW_cohort_mod <- lm(height_2~total_dry_mass + cohort, data=LP)
+# summary(HxW_cohort_mod)
+# 
+# anova(HxW_cohort_mod, HxW_int_cohort_mod)
+# #  interaction model is  sig diff = better
 
+# Height-weight relationship based on provenance:
+ggplot(LP,aes(x=total_dry_mass, y=height_2, color=provenance)) +
+  geom_point() +
+  geom_smooth(method="lm", se=FALSE) +
+  theme_minimal() +
+  scale_fill_manual(
+    values = cohort_colors) 
+  #' North Coast initially starts taller at same weight than Alaska and Skeena River
+  #' North Coast less steep height:weight relationship than both A and NC 
 
+ggsave("HxW_proven.png")
+
+HxW_int_proven_mod <- lm(height_2~total_dry_mass * provenance, data=LP)
+summary(HxW_int_proven_mod)
+  #' Alaska = reference level. Intercept = 35 mm, slope = 21 units mass per 1 unit height
+  #' North Coast has sig diff intercept (sig taller at same weight)
+  #' slope of NC (21.067-6.357=14.71) = sig diff than Alaska (slope 21.067)
+
+# Is slope different between Plantation and Regeneration?
+LP$provenance <- relevel(as.factor(LP$provenance), ref="North Coast")
+# North Coast = reference level
+HxW_int_provenance_mod_2 <- lm(height_2~total_dry_mass * provenance, data=LP)
+summary(HxW_int_provenance_mod_2)
+#' North Coast intercept = 51.15, slope = 14.71
+#' intercept between NC & Alaska = sig diff ***
+#' intercept between NC & SR = sig diff ***
+#' slope between NC & Alaska = **
+#' slope between NC & SR = ***
+
+# Is interaction model better than no interaction model?
+# HxW_proven_mod <- lm(height_2~total_dry_mass + provenance, data=LP)
+# anova(HxW_proven_mod,HxW_int_proven_mod)
+# #  interaction model is  sig diff = better
+# # interaction model assumes different slopes for each provenance
 
