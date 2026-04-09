@@ -229,25 +229,26 @@ ggplotly(p,tooltip="text")
 
 
 # Number of families per cohort and provenance ----------------------------
+# families are not equally distributed because there is no Family data for Origin trees!
 
-family_summary <- LP %>%
-  group_by(provenance, cohort) %>%     # group by provenance and cohort
-  summarise(num_families = n_distinct(Family)) %>%  # count unique families
-  ungroup()
-
-ggplot(family_summary, aes(x = provenance, y = num_families, fill = cohort)) +
-  geom_bar(stat = "identity", position = "dodge") +  # side-by-side bars
-  labs(
-    x = "provenance",
-    y = "Number of Families",
-    fill = "cohort"
-  ) +
-  scale_fill_manual(
-    values = cohort_colors) +
-  scale_y_continuous(breaks = seq(0, 10, by = 2)) + 
-  theme_minimal()
-
-ggsave("Familiesprovenancecohort.png")
+# family_summary <- LP %>%
+#   group_by(provenance, cohort) %>%     # group by provenance and cohort
+#   summarise(num_families = n_distinct(Family)) %>%  # count unique families
+#   ungroup()
+# 
+# ggplot(family_summary, aes(x = provenance, y = num_families, fill = cohort)) +
+#   geom_bar(stat = "identity", position = "dodge") +  # side-by-side bars
+#   labs(
+#     x = "provenance",
+#     y = "Number of Families",
+#     fill = "cohort"
+#   ) +
+#   scale_fill_manual(
+#     values = cohort_colors) +
+#   scale_y_continuous(breaks = seq(0, 10, by = 2)) + 
+#   theme_minimal()
+# 
+# ggsave("Familiesprovenancecohort.png")
 
 # Status across whole experiment ------------------------------------------------------------------
 
@@ -343,7 +344,9 @@ ggplot(Statusprovenance,
     y = "Percentage alive"
   ) +
   theme_minimal() +
-  theme(legend.position = "none")
+  theme(legend.position = "none") +
+  scale_fill_manual(
+    values = provenance_colors)
 
 ggsave("StatusprovenanceProportion.png")
 
@@ -370,58 +373,76 @@ ggsave("StatusByBlock.png")
 
 # how do provenance AND cohort influence mortality?
 
-# summary table for how many originally in each cohort & provenance AND how many survived
-interaction <- LP %>% 
-  count(provenance, cohort, status_2) %>% 
-  pivot_wider(
-    names_from = status_2,
-    values_from = n
-  ) %>% 
-  left_join(cohortprovenanceCounts %>%  select(provenance, cohort, n),
-            by = c("provenance", "cohort")) %>% 
-  mutate(prop_alive = alive / n)
+CohortProvenanceCounts <- LP %>% 
+  group_by(provenance, cohort) %>% 
+  summarise(
+    total = n(),
+    alive = sum(status_2 == "alive"),
+  perc_alive = alive / total *100,
+  .groups ="drop"
+  )
 
-
-ggplot(interaction, aes(x = provenance, y = prop_alive*100, fill = cohort)) +
+ggplot(CohortProvenanceCounts, aes(y=perc_alive, x = cohort, fill = provenance)) +
   geom_col(position="dodge") +
-  facet_wrap(~ cohort)  +
-  labs(
-    y = "Percentage alive"
-  ) +
   theme_minimal() +
-  theme(legend.position = "none")
-
-ggsave("InteractionPlot.png")
-
-# Group by provenance:
-
-interaction <- LP %>% 
-  count(provenance, cohort, status_2) %>% 
-  pivot_wider(
-    names_from = status_2,
-    values_from = n,
-    values_fill = 0
-  ) %>% 
-  left_join(
-    cohortprovenanceCounts %>% select(provenance, cohort, n),
-    by = c("provenance", "cohort")
-  ) %>% 
-  mutate(prop_alive = alive / n)
-
-ggplot(interaction,
-       aes(x = provenance,
-           y = prop_alive * 100,
-           fill = cohort)) +
-  geom_col(position = position_dodge(width = 0.8)) +
-  scale_fill_manual(values = cohort_colors) +
+  scale_fill_manual(values=provenance_colors) +
   labs(
-    y = "Percentage alive",
-    x = "provenance",
-    fill = "cohort"
-  ) +
-  theme_minimal()
+    y = "Percentage alive")
 
 ggsave("InteractionPlot.png")
+
+# # summary table for how many originally in each cohort & provenance AND how many survived
+# interaction <- LP %>% 
+#   count(provenance, cohort, status_2) %>% 
+#   pivot_wider(
+#     names_from = status_2,
+#     values_from = n
+#   ) %>% 
+#   left_join(CohortProvenanceCounts %>%  select(provenance, cohort, n),
+#             by = c("provenance", "cohort")) %>% 
+#   mutate(prop_alive = alive / n)
+
+
+# ggplot(interaction, aes(x = provenance, y = prop_alive*100, fill = cohort)) +
+#   geom_col(position="dodge") +
+#   facet_wrap(~ cohort)  +
+#   labs(
+#     y = "Percentage alive"
+#   ) +
+#   theme_minimal() +
+#   theme(legend.position = "none")
+# 
+# ggsave("InteractionPlot.png")
+# 
+# # Group by provenance:
+# 
+# interaction <- LP %>% 
+#   count(provenance, cohort, status_2) %>% 
+#   pivot_wider(
+#     names_from = status_2,
+#     values_from = n,
+#     values_fill = 0
+#   ) %>% 
+#   left_join(
+#     cohortprovenanceCounts %>% select(provenance, cohort, n),
+#     by = c("provenance", "cohort")
+#   ) %>% 
+#   mutate(prop_alive = alive / n)
+# 
+# ggplot(interaction,
+#        aes(x = provenance,
+#            y = prop_alive * 100,
+#            fill = cohort)) +
+#   geom_col(position = position_dodge(width = 0.8)) +
+#   scale_fill_manual(values = cohort_colors) +
+#   labs(
+#     y = "Percentage alive",
+#     x = "provenance",
+#     fill = "cohort"
+#   ) +
+#   theme_minimal()
+# 
+# ggsave("InteractionPlot.png")
 
 # Are differences in mortality within provenances and between cohorts (cohorts) significant?
 
@@ -431,6 +452,95 @@ LP$status_bin <- ifelse(LP$status_2 == "alive", 1, 0)
 
 # Interaction model -------------------------------------------------------
 
+#' Does a specific cohort, provenance or interaction between cohort and provenance 
+#' significantly affect the likelihood of a tree being dead or alive?
+
+unique(LP$status_2) 
+LP$status_2 <- factor(LP$status_2, levels = c("dead", "alive"))
+# levels (factor?)
+# -> only comparing between Regeneration & Origin but across all provenances
+
+# MODEL 1
+#' omit Plantation cohort
+LP_noPlant <- droplevels(subset(LP, cohort != "Plantation"))
+model_1 <- glm(status_2 ~ cohort*provenance, 
+               data = LP_noPlant,
+               family = binomial)
+
+drop1(model_1, test = "Chisq")
+#' interaction not significant
+#' likelihood of survival not effect of provenance AND cohort interaction
+#' effect of provenance on tree survival does not differ between cohorts (origin and regen)
+anova(model_1, test = "Chisq")
+summary(model_1)
+#' cohort regen = 0.0266 -> slope of Regen trees slightly steeper than Alaska Origin (+0.67)
+
+# EVALUATION
+deviance(model_1) / df.residual(model_1)
+# 1.2 -> maybe slightly overdispersed
+plot(model_1)
+  #'  residuals vs fitted = good
+  #'  Q-Q residuals = mostly good
+  #'  Scale Location = okay
+
+# No interaction:
+model_1_noInt <- glm(status_2 ~ cohort+provenance,
+                     data=LP_noPlant,
+                     family=binomial)
+
+drop1(model_1_noInt, test = "Chisq")
+#' both cohort and provenance individually significantly predict survival of tree 
+summary(model_1_noInt)
+
+plot(model_1_noInt)
+  #' residuals vs fitted = very good
+  #' Q-Q residuals = mostly good
+  #' scale location = okay
+
+# Pairwise comparisons:
+# COHORT
+# estimate marginal means
+emmeans(model_1_noInt, pairwise ~cohort, type="response")
+  #' Origin: 56.8% predicted survival
+  #' Regen: 73.3% predicted survival
+
+# PROVENANCE
+emmeans(model_1_noInt, pairwise ~provenance, type="response")
+
+
+
+
+# MODEL 2
+#' omit Alaska
+LP_noAlaska <- droplevels(subset(LP, provenance != "Alaska"))
+head(LP_noAlaska$status_2)
+unique(LP_noAlaska$status_2)
+LP_noAlaska$status_2 <- factor(LP_noAlaska$status_2, levels = c("dead", "alive"))
+
+model_2 <- glm(status_2 ~ cohort*provenance, 
+               data = LP_noAlaska,
+               family = binomial)
+
+drop1(model_2, test = "Chisq")
+anova(model_2, test = "Chisq")
+summary(model_2)
+
+
+# No Interaction model:
+model_2_noInt <- glm(status_2 ~ cohort+provenance,
+                     data=LP_noAlaska,
+                     family=binomial)
+
+drop1(model_2_noInt, test = "Chisq")
+anova(model_2_noInt, test = "Chisq")
+summary(model_2_noInt)
+
+emmeans(model_2_noInt, pairwise ~cohort, type="response")
+
+emmeans(model_2_noInt, pairwise ~provenance, type="response")
+
+
+# Old Models:
  # start with one explanatory variable (provenance)
 # Reference level = Alaska
 # Dummy 1 = ProvNC
@@ -447,24 +557,24 @@ LP$status_bin <- ifelse(LP$status_2 == "alive", 1, 0)
 # summary(model)
   # Regeneration is significant predictor of status?
 
-# DIFFERENT APPROACH:
-# binomial mixed model (GLMM)
-  #' fixed effects: cohort & provenance
-  #' random effect: family (many families, not main treatment)
-
-LP$status_bin <- ifelse(LP$status_2 == "alive", 1,0)
-model <- glm(status_bin ~ cohort + provenance + cohort:provenance,
-                    data=LP,
-                    family=binomial)
-
-# (generalised linear mixed effects regression?)
-# remove Family because not comparable across provenance and cohort (+ (1| Family))
-# glmer only if random effect present
-  # provenance has strongest effect (14% of variation) and cohort (cohort) also strong effect (11%). Interaction not strong.
-
-
-# test effects
-anova(model, test = "Chisq")
+#' # DIFFERENT APPROACH:
+#' # binomial mixed model (GLMM)
+#'   #' fixed effects: cohort & provenance
+#'   #' random effect: family (many families, not main treatment)
+#' 
+#' LP$status_bin <- ifelse(LP$status_2 == "alive", 1,0)
+#' model <- glm(status_bin ~ cohort + provenance + cohort:provenance,
+#'                     data=LP,
+#'                     family=binomial)
+#' 
+#' # (generalised linear mixed effects regression?)
+#' # remove Family because not comparable across provenance and cohort (+ (1| Family))
+#' # glmer only if random effect present
+#'   # provenance has strongest effect (14% of variation) and cohort (cohort) also strong effect (11%). Interaction not strong.
+#' 
+#' 
+#' # test effects
+#' anova(model, test = "Chisq")
   #' cohort < 0.05 ***
   #' provenance < 0.05 ***
   #' cohort:provenance > 0.05
@@ -510,102 +620,102 @@ anova(model, test = "Chisq")
 
 # Status by Family --------------------------------------------------------
 
-length(unique(LP$Family))
-  # 54 families
-
-StatusFamily <- LP %>% 
-  group_by(Family) %>% 
-  summarise(total=n(),
-            alive = sum(status_2=="alive", na.rm=T),
-            percent_alive = alive / total * 100) 
-
-ggplot(StatusFamily,
-       aes(y=reorder(Family, percent_alive),
-           x=percent_alive,
-           fill=percent_alive)) +
-  geom_col() +
-  scale_fill_gradient(low="lightblue", high="darkblue") +
-  theme_minimal() +
-  labs(
-    x="Percentage alive",
-    y="Family",
-    fill="Percent alive"
-  ) + 
-  theme(legend.position = "none")
-
-ggsave("StatusByFamily.png")
+# length(unique(LP$Family))
+#   # 54 families
+# 
+# StatusFamily <- LP %>% 
+#   group_by(Family) %>% 
+#   summarise(total=n(),
+#             alive = sum(status_2=="alive", na.rm=T),
+#             percent_alive = alive / total * 100) 
+# 
+# ggplot(StatusFamily,
+#        aes(y=reorder(Family, percent_alive),
+#            x=percent_alive,
+#            fill=percent_alive)) +
+#   geom_col() +
+#   scale_fill_gradient(low="lightblue", high="darkblue") +
+#   theme_minimal() +
+#   labs(
+#     x="Percentage alive",
+#     y="Family",
+#     fill="Percent alive"
+#   ) + 
+#   theme(legend.position = "none")
+# 
+# ggsave("StatusByFamily.png")
 
 
 # change order of families by number of trees per family: 
 
-# Order Family factor by total number of trees (descending)
-StatusFamily <- StatusFamily %>%
-  mutate(Family = factor(Family, levels = StatusFamily$Family[order(-total)]))
-
-ggplot(StatusFamily,
-       aes(
-         y = Family,          # now Family is a factor ordered by total trees
-         x = percent_alive,
-         fill = percent_alive
-       )) +
-  geom_col() +
-  scale_fill_gradient(low="lightblue", high="darkblue") +
-  theme_minimal() +
-  labs(
-    x="Percentage alive",
-    y="Family",
-    fill="Percent alive"
-  ) +
-  theme(legend.position = "none")
-
-ggsave("FamilyPercentageAlive_ordered.png")
-
-
-
-# top and bottom 10 families (based on percentage_alive)
-
-ggplot(StatusFamily_sub, aes(x = reorder(Family, percent_alive), y = percent_alive, fill=percent_alive)) +
-  geom_col() +
-  coord_flip() +
-  labs(
-    title="Top and Bottom 10 Families",
-    x = "Family",
-    y = "Alive (%)"
-  ) +
-  theme(legend.position = "none") +
-  guides(fill="none") +
-  theme_minimal()
-
-ggsave("StatusByFamily.png")
-
-
-#  Distribution - Family -----------------------------------------------------
-
- #' 6 families have 50 ind.
- #' most have 10 ind.
- #' one has ~13 ind. 
- #' one family has ~8 ind. 
-
-FamilyDist <- StatusFamily %>% 
-  count(total, name = "num_families")
-
-# How many individuals per number of families. e.g., 1 family has 8 trees
-ggplot(FamilyDist,
-       aes(x=factor(total), y=num_families)) +
-  geom_col(fill="steelblue") +
-  labs(
-    x="Number of individuals per family",
-    y="Number of families"
-  ) +
-  theme_minimal()
-
-ggsave("FamilyDistribution.png")
-
-# how many trees per each family. e.g., family LPAL-Ca12 has 50 trees
-ggplot(StatusFamily, aes(x = reorder(Family, -total), y = total, fill=total)) +
-  geom_col() +
-  guides(fill="none") +
-  theme(axis.text.x = element_text(angle = 45))
+#' # Order Family factor by total number of trees (descending)
+#' StatusFamily <- StatusFamily %>%
+#'   mutate(Family = factor(Family, levels = StatusFamily$Family[order(-total)]))
+#' 
+#' ggplot(StatusFamily,
+#'        aes(
+#'          y = Family,          # now Family is a factor ordered by total trees
+#'          x = percent_alive,
+#'          fill = percent_alive
+#'        )) +
+#'   geom_col() +
+#'   scale_fill_gradient(low="lightblue", high="darkblue") +
+#'   theme_minimal() +
+#'   labs(
+#'     x="Percentage alive",
+#'     y="Family",
+#'     fill="Percent alive"
+#'   ) +
+#'   theme(legend.position = "none")
+#' 
+#' ggsave("FamilyPercentageAlive_ordered.png")
+#' 
+#' 
+#' 
+#' # top and bottom 10 families (based on percentage_alive)
+#' 
+#' ggplot(StatusFamily_sub, aes(x = reorder(Family, percent_alive), y = percent_alive, fill=percent_alive)) +
+#'   geom_col() +
+#'   coord_flip() +
+#'   labs(
+#'     title="Top and Bottom 10 Families",
+#'     x = "Family",
+#'     y = "Alive (%)"
+#'   ) +
+#'   theme(legend.position = "none") +
+#'   guides(fill="none") +
+#'   theme_minimal()
+#' 
+#' ggsave("StatusByFamily.png")
+#' 
+#' 
+#' #  Distribution - Family -----------------------------------------------------
+#' 
+#'  #' 6 families have 50 ind.
+#'  #' most have 10 ind.
+#'  #' one has ~13 ind. 
+#'  #' one family has ~8 ind. 
+#' 
+#' FamilyDist <- StatusFamily %>% 
+#'   count(total, name = "num_families")
+#' 
+#' # How many individuals per number of families. e.g., 1 family has 8 trees
+#' ggplot(FamilyDist,
+#'        aes(x=factor(total), y=num_families)) +
+#'   geom_col(fill="steelblue") +
+#'   labs(
+#'     x="Number of individuals per family",
+#'     y="Number of families"
+#'   ) +
+#'   theme_minimal()
+#' 
+#' ggsave("FamilyDistribution.png")
+#' 
+#' # how many trees per each family. e.g., family LPAL-Ca12 has 50 trees
+#' ggplot(StatusFamily, aes(x = reorder(Family, -total), y = total, fill=total)) +
+#'   geom_col() +
+#'   guides(fill="none") +
+#'   theme(axis.text.x = element_text(angle = 45))
 
 # Distribution -cohort -------------------------------------------------------
 
@@ -2181,6 +2291,7 @@ ggplot(LP,aes(x=total_dry_mass, y=height_2, color=provenance)) +
 
 ggsave("HxW_proven.png")
 
+# Does the height-mass relationship differ between provenances on average across all cohorts?
 HxW_int_proven_mod <- lm(height_2~total_dry_mass * provenance, data=LP)
 summary(HxW_int_proven_mod)
   #' Alaska = reference level. Intercept = 35 mm, slope = 21 units mass per 1 unit height
@@ -2203,4 +2314,54 @@ summary(HxW_int_provenance_mod_2)
 # anova(HxW_proven_mod,HxW_int_proven_mod)
 # #  interaction model is  sig diff = better
 # # interaction model assumes different slopes for each provenance
+
+
+# Prov. x Cohort interaction ----------------------------------------------
+# DOUBLE INTERACTION
+  #' does height x weight relationship differ based on Cohort AND Provenance?
+  #' e.g., are trees from Regen & North Coast likely to be taller at same weight than trees from Origin and Alaska?
+
+# MODEL 1
+# Interaction excluding Plantation overall
+LP_noPlant <- droplevels(subset(LP, cohort != "Plantation"))
+unique(LP_noPlant$cohort) 
+  # levels (factor?)
+# -> only comparing between Regeneration & Origin but across all provenances
+
+# Does the height-mass relationship differ between provenances within each cohort?
+model_noPlant <- lm(height_2~total_dry_mass*provenance*cohort, data=LP_noPlant)
+summary(model_noPlant)
+  #' North Coast & Origin = reference levels
+  #' total_dry_mass = intercept of North Coast (height at weight 0 = 14.426)
+  #' both Alaska and Skeena River have positive, significant relationships between height and weight
+  #' skeena river & total dry mass = sig -> the slope of mass vs height is steeper for skeena river compared to North Coast 
+  #'    (14.426 + 13.921 = 28.347 -> every unit increase in height = ~28 units increase in mass)
+  #' Alaska vs. North Coast = not sig anymore (as in simpler model) -> some of variation attributed to provenance is now explained by cohort instead (cohort gets its own effect)
+  #' none of interactions are significant: cohorts alone can't explain remaining difference in slopes
+
+#' -> also compare between North Coast x Origin and North Coast x REgen?
+50.919 -28.385 - 3.92 
+50.919 -28.385 
+
+# Model 2 
+# Interaction excluding Alaska overall
+LP_noAlaska <- droplevels(subset(LP, provenance != "Alaska"))
+unique(LP_noAlask$provenance)
+unique(LP_noAlask$cohort)
+# Plantation   Origin       Regeneration
+# -> only comparing between North Coast & Skeena River but across all cohorts
+
+# Does the height-mass relationship differ between provenances within each cohort?
+model_noAlask <- lm(height_2~total_dry_mass*provenance*cohort, data=LP_noAlask)
+summary(model_noAlask)
+  #' North Coast & Plantation = reference level
+  #' Skeena River = weaker height-mass relationship
+
+
+
+
+
+
+
+
 
