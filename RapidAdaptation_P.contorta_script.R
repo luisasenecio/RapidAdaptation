@@ -387,7 +387,8 @@ ggplot(CohortProvenanceCounts, aes(y=perc_alive, x = cohort, fill = provenance))
   theme_minimal() +
   scale_fill_manual(values=provenance_colors) +
   labs(
-    y = "Percentage alive")
+    y = "Percentage alive") +
+  scale_y_continuous(limits=c(0,100))
 
 ggsave("InteractionPlot.png")
 
@@ -2242,8 +2243,13 @@ model <- lmer(AUDPS_adj_norm_log ~provenance * cohort + (1 | Bioassay),
 
 # HEIGHT:WEIGHT  -------------------------------------------------------------
 
-# Height-weight relationship based on cohort:
-ggplot(LP,aes(x=total_dry_mass, y=height_2, color=cohort)) +
+#' only below-ground weight 
+#' height ~ total weight = influenced by height~above-ground weight correlation
+
+
+
+# Height-weight relationship based on COHORT:
+ggplot(LP,aes(x=root_dry_mass, y=height_2, color=cohort)) +
   geom_point() +
   geom_smooth(method="lm", se=FALSE) +
   theme_minimal() +
@@ -2263,36 +2269,46 @@ summary(HxW_int_cohort_mod)
 # Is slope different between Plantation and Regeneration?
 LP$cohort <- relevel(as.factor(LP$cohort), ref="Plantation")
   # Plantation = reference level
-HxW_int_cohort_mod_2 <- lm(height_2~total_dry_mass * cohort, data=LP)
+HxW_int_cohort_mod_2 <- lm(height_2~root_dry_mass * cohort, data=LP)
 summary(HxW_int_cohort_mod_2)
+# Origin shortest, regen tallest at same root mass
+
+# OLD (total dry mass)
   #' no difference in slopes between Regen and Plantation
   #' Plantation: every 1 unit increase in mass -> height increases by 19 units (slope) -> if significant = mass is positively related to height in Plantation
   #' cohortOrigin: difference in intercept between Origin and Plantation (when total mass = 0)
     #' at mass = 0, Origin plants predicted to be 13.887 units shorter than Plantation plants = significant
   #' interaction terms: whether slopes between regen and plantation are different = not significant
 
-
 # # compare interaction with no interaction model:
 # HxW_cohort_mod <- lm(height_2~total_dry_mass + cohort, data=LP)
 # summary(HxW_cohort_mod)
-# 
 # anova(HxW_cohort_mod, HxW_int_cohort_mod)
-# #  interaction model is  sig diff = better
+#   => interaction model is  sig diff = better
 
-# Height-weight relationship based on provenance:
-ggplot(LP,aes(x=total_dry_mass, y=height_2, color=provenance)) +
+#  Height-weight relationship based on PROVENANCE -------------------------
+
+# VISUAL:
+ggplot(LP,aes(x=root_dry_mass, y=height_2, color=provenance)) +
   geom_point() +
   geom_smooth(method="lm", se=FALSE) +
   theme_minimal() +
   scale_fill_manual(
     values = cohort_colors) 
+#' mixed relationships (not parallel), but overall smiliar
+#' NC initially taller at same root mass, then shorter at same root mass
+#' little root mass trees shorter than others, but large root mass trees taller than others
+
+# OLD (total dry mass)
   #' North Coast initially starts taller at same weight than Alaska and Skeena River
   #' North Coast less steep height:weight relationship than both A and NC 
+  #'  = after flipping point don't get taller with more root mass as strongly as A & SR
 
 ggsave("HxW_proven.png")
 
+# MODEL:
 # Does the height-mass relationship differ between provenances on average across all cohorts?
-HxW_int_proven_mod <- lm(height_2~total_dry_mass * provenance, data=LP)
+HxW_int_prov_mod <- lm(height_2~total_dry_mass * provenance, data=LP)
 summary(HxW_int_proven_mod)
   #' Alaska = reference level. Intercept = 35 mm, slope = 21 units mass per 1 unit height
   #' North Coast has sig diff intercept (sig taller at same weight)
@@ -2316,10 +2332,12 @@ summary(HxW_int_provenance_mod_2)
 # # interaction model assumes different slopes for each provenance
 
 
-# Prov. x Cohort interaction ----------------------------------------------
-# DOUBLE INTERACTION
+# HxM & Prov. x Cohort interaction ----------------------------------------------
+
   #' does height x weight relationship differ based on Cohort AND Provenance?
   #' e.g., are trees from Regen & North Coast likely to be taller at same weight than trees from Origin and Alaska?
+  #' height as explained by weight and an interaction between provenance (environmental variation) and cohort (rapid adaptation) 
+  #'  as well as Block as random factor (micro-environmental variation)
 
 # MODEL 1
 # Interaction excluding Plantation overall
@@ -2329,8 +2347,10 @@ unique(LP_noPlant$cohort)
 # -> only comparing between Regeneration & Origin but across all provenances
 
 # Does the height-mass relationship differ between provenances within each cohort?
-model_noPlant <- lm(height_2~total_dry_mass*provenance*cohort, data=LP_noPlant)
-summary(model_noPlant)
+lmer_Int_noPl <- lmer(height_2 ~ root_dry_mass + provenance * cohort + (1|Block), data=LP_noPlant)
+summary(lmer_Int_noPl)
+
+
   #' North Coast & Origin = reference levels
   #' total_dry_mass = intercept of North Coast (height at weight 0 = 14.426)
   #' both Alaska and Skeena River have positive, significant relationships between height and weight
@@ -2352,7 +2372,7 @@ unique(LP_noAlask$cohort)
 # -> only comparing between North Coast & Skeena River but across all cohorts
 
 # Does the height-mass relationship differ between provenances within each cohort?
-model_noAlask <- lm(height_2~total_dry_mass*provenance*cohort, data=LP_noAlask)
+model_noAlask <- lm(height_2~total_dry_mass*provenance*cohort, data=LP_noAlaska)
 summary(model_noAlask)
   #' North Coast & Plantation = reference level
   #' Skeena River = weaker height-mass relationship
