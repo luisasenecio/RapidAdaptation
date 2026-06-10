@@ -89,10 +89,10 @@ unique(data$`Date of budset`)
 #'    -> change to date_DBB_2   
 #'    -> change to Julian days        
 #' "Height (cm)...27"
-#'    -> change to height_2
+#'    -> change to height
 #'    -> change to numeric    
 #' "Date measured"
-#'    -> change to date_height_2
+#'    -> change to date_height
 #'    -> change to Julian days       
 
 
@@ -109,21 +109,20 @@ LP <- data %>%
     "status_2" = "Status 22/09/2025",
     "DBB_2" = "DBB (mm)...25",
     "date_DBB_2" = "Date measured DBB",
-    "height_2" = "Height (cm)...27",
-    "date_height_2" = "Date measured",
+    "height" = "Height (cm)...27",
+    "date_height" = "Date measured",
     "cohort" = Type,
     "provenance" = Provenance,
     "Bioassay_0" = "Bioassay leaf weight_2",
     "dry_mass" = "Dry mass (g)",
-    "root_dry_mass" = "Root dry mass (g)",
+    "root_mass" = "Root dry mass (g)",
     "shootroot" = "Shoot-to-root ratio (S:R)",
     "total_dry_mass" = "Total dry mass (g)",
     "RMF" = "Root mass fraction (RMF)"
   )  %>% 
   select(-c(`Height (cm)...14`, `Needle length 1 (cm)`, `Needle length 2 (cm)`, 
             Ruler, Offset, Size,`Bioassay leaf weight`, `Dry mass > root mass?`)) %>% 
-  mutate(across(c(DBB_1, height_1, needle_1, needle_2, height_2, DBB_2),as.numeric)) %>% 
-  mutate(height_2 = height_2*10) %>% 
+  mutate(across(c(DBB_1, height_1, needle_1, needle_2, height, DBB_2),as.numeric)) %>% 
   mutate(Family = ifelse(Family == "sub for LPNC - UKA4 - actually LPNC - UKA1",
                          "LPNC - UKA1",
                          Family))
@@ -134,6 +133,9 @@ head(LP)
 
 # "sub for LPNC - UKA4 - actually LPNC - UKA1"
 length(unique(LP$Family))
+
+
+# color sets --------------------------------------------------------------
 
 cohort_colors <- c(
   "Origin" = "#F08080",
@@ -171,7 +173,7 @@ LP$Julian_budburst <- julian(LP$date_budburst, origin = as.Date("2024-02-01"))
 
 # plot height vs weight
 
-p<-ggplot(LP, aes(x = total_dry_mass, y = height_2)) +
+p<-ggplot(LP, aes(x = total_dry_mass, y = height)) +
   geom_point(aes(text=paste("Block:", Block,
                             "Position:", Position))) +
   theme_minimal()
@@ -189,9 +191,9 @@ ggplotly(p,tooltip="text")
 # )
 # result <- LP %>%
 #   semi_join(targets, by = c("Block", "Position")) %>%
-#   select(Block, Position, height_2, total_dry_mass)
+#   select(Block, Position, height, total_dry_mass)
 
-p<-ggplot(LP, aes(x = total_dry_mass, y = root_dry_mass)) +
+p<-ggplot(LP, aes(x = total_dry_mass, y = root_mass)) +
   geom_point(aes(text=paste("Block:", Block,
                             "Position:", Position))) +
   theme_minimal()
@@ -848,33 +850,33 @@ sum(is.na(LP$DBB_2))
 LP_long_height <- LP %>%
   filter(status_1 == "alive" & status_2 == "alive") %>%    # remove trees that are dead but still have height measurements
   pivot_longer(
-    cols = c( height_1, height_2),
+    cols = c( height_1, height),
     names_to = "height_year",
     values_to = "height"
   )
 
-# if NAs not removed height_1 655 and height_2 509
+# if NAs not removed height_1 655 and height 509
 
 LP_long_height %>% 
   filter(!is.na(height)) %>% 
   count(height_year, name="n")
   # height_1 506
-  # height_2 505
+  # height 505
 
-# supposed to have ~626 for height_1 and ~510 for height_2
+# supposed to have ~626 for height_1 and ~510 for height
 
 # count number of non-NA values & determine positions
 counts_height <- LP_long_height %>% 
   # filter(!is.na(height)) %>% 
   group_by(height_year) %>% 
   summarise(n=n(), .groups="drop") %>% 
-  mutate(x_pos =ifelse(height_year == "height_1",2.7,9),                  # position if height_year is height_1_scaled = 2.5, otherwise 9 (height_2)
+  mutate(x_pos =ifelse(height_year == "height_1",2.7,9),                  # position if height_year is height_1_scaled = 2.5, otherwise 9 (height)
          y_pos=ifelse(height_year == "height_1", 50, 2))
   # height_1 = 506 measurements
-  #' height_2 = 505 measurements
+  #' height = 505 measurements
   #' doesn't match with total alive 
 
-nrow(LP %>% filter(status_2 == "alive" & !is.na(height_2)))
+nrow(LP %>% filter(status_2 == "alive" & !is.na(height)))
   #' 2024: 624 trees that are alive and have height measurement -> 2 missing height measurements
   #' 2025: 509 trees are alive and have height measurement -> 1 missing height measurement
 
@@ -917,7 +919,7 @@ ggplot(LP_long_height, aes(x=height, fill = height_year)) +
   scale_color_manual(
     values=c(
       "height_1_scaled" = "black",
-      "height_2" = "tomato2"
+      "height" = "tomato2"
     )
   ) +
   labs(
@@ -927,8 +929,8 @@ ggplot(LP_long_height, aes(x=height, fill = height_year)) +
   ) +
   scale_fill_manual(
     name = "Year",
-    values = c("height_1_scaled" = "black", "height_2" = "tomato1"),
-    labels = c("height_1_scaled" = "2024", "height_2" = "2025")
+    values = c("height_1_scaled" = "black", "height" = "tomato1"),
+    labels = c("height_1_scaled" = "2024", "height" = "2025")
   ) +
   theme_minimal()+
   theme(
@@ -944,7 +946,7 @@ ggsave("height.png")
 LP_height <- LP %>% 
   filter(status_1 == "alive" & status_2 == "alive") %>% 
   pivot_longer(
-    cols = c(height_1, height_2),
+    cols = c(height_1, height),
     names_to = "year",
     values_to = "height"
   )
@@ -985,10 +987,10 @@ ggplot(LP_height, aes(x = height, fill = year)) +
   theme_minimal() +
   scale_fill_manual(
     name = "Year",
-    values = c("height_1" = "black", "height_2" = "#9BCD9B"),
-    labels = c("height_1" = "2024", "height_2" = "2025")
+    values = c("height_1" = "black", "height" = "#9BCD9B"),
+    labels = c("height_1" = "2024", "height" = "2025")
   ) +
-  scale_color_manual(values = c("height_1" = "grey", "height_2" = "#698B69")) +
+  scale_color_manual(values = c("height_1" = "grey", "height" = "#698B69")) +
   theme(
     legend.position = c(0.95,0.95),
     legend.justification = c("right", "top")
@@ -1006,27 +1008,27 @@ c("#9BCD9B", "#698B69", "#6E8B3D")
 # from dead trees
 
 range(LP$height_1, na.rm = T)
-range(LP$height_2, na.rm = T)
+range(LP$height, na.rm = T)
 sum(is.na(LP$height_1))
-sum(is.na(LP$height_2))
+sum(is.na(LP$height))
 
 
-# Comparative boxplot: Height_2 & provenance
+# Comparative boxplot: height & provenance
 unique(LP$provenance)
 
-ggplot(LP, aes(x = provenance, y = height_2, fill=provenance)) +
+ggplot(LP, aes(x = provenance, y = height, fill=provenance)) +
   geom_boxplot() +
-  labs(title = "Height_2 by provenance",
+  labs(title = "height by provenance",
        x = "provenance",
-       y = "Height_2") +
+       y = "height") +
   theme_minimal() +
   theme(legend.position = "none")
 
 ggsave("height2_provenance_boxplot.png")
 
  # Statistical tests
-  # is height_2 normally distributed in each provenance lvel?
-ggplot(LP, aes(x = height_2, fill = provenance)) +
+  # is height normally distributed in each provenance lvel?
+ggplot(LP, aes(x = height, fill = provenance)) +
   geom_histogram(alpha = 0.6, bins = 20) +
   facet_wrap(~ provenance) +
   labs(title = "Height 2 Distribution by provenance", x = "Height 2", y = "Count") +
@@ -1036,13 +1038,13 @@ ggplot(LP, aes(x = height_2, fill = provenance)) +
 # Normality within groups (Shapiro-Wilk test)
 LP %>%
   group_by(provenance) %>%
-  summarise(shapiro_p = shapiro.test(height_2)$p.value)
+  summarise(shapiro_p = shapiro.test(height)$p.value)
   # only North Coast is normally distributed
 
-kruskal.test(height_2 ~ provenance, data = LP)
+kruskal.test(height ~ provenance, data = LP)
    # highly significant
 
-pairwise.wilcox.test(LP$height_2, LP$provenance, p.adjust.method = "BH")
+pairwise.wilcox.test(LP$height, LP$provenance, p.adjust.method = "BH")
   #' NC-Alaska: sig
   #' NC-Skeena: sig
   #' Alaska-Skeena: not sig 
@@ -1052,11 +1054,11 @@ pairwise.wilcox.test(LP$height_2, LP$provenance, p.adjust.method = "BH")
 # count how many values for height per cohort
 
 
-ggplot(LP, aes(x = cohort, y = height_2, fill=cohort)) +
+ggplot(LP, aes(x = cohort, y = height, fill=cohort)) +
   geom_boxplot() +
-  labs(title = "Height_2 by cohort",
+  labs(title = "height by cohort",
        x = "cohort",
-       y = "Height_2") +
+       y = "height") +
   theme_minimal() +
   theme(legend.position = "none") +
   scale_fill_manual(
@@ -1066,9 +1068,9 @@ ggplot(LP, aes(x = cohort, y = height_2, fill=cohort)) +
 ggsave("height2_cohort_boxplot.png")
 
 # Statistical tests
-# is height_2 normally distributed in each cohort lvel?
+# is height normally distributed in each cohort lvel?
 
-ggplot(LP, aes(x = height_2, fill = cohort)) +
+ggplot(LP, aes(x = height, fill = cohort)) +
   geom_histogram(alpha = 0.6, bins = 20) +
   facet_wrap(~ cohort) +
   labs(title = "Height 2 Distribution by cohort", x = "Height 2", y = "Count") +
@@ -1078,13 +1080,13 @@ ggplot(LP, aes(x = height_2, fill = cohort)) +
 # Normality within groups (Shapiro-Wilk test)
 LP %>%
   group_by(cohort) %>%
-  summarise(shapiro_p = shapiro.test(height_2)$p.value)
+  summarise(shapiro_p = shapiro.test(height)$p.value)
 # only Regen is normally distributed
 
-kruskal.test(height_2 ~ cohort, data = LP)
+kruskal.test(height ~ cohort, data = LP)
 # highly significant
 
-pairwise.wilcox.test(LP$height_2, LP$cohort, p.adjust.method = "BH")
+pairwise.wilcox.test(LP$height, LP$cohort, p.adjust.method = "BH")
   #' all sig
 
 
@@ -2239,29 +2241,41 @@ model <- lmer(AUDPS_adj_norm_log ~provenance * cohort + (1 | Bioassay),
   #' provenance North Coast & cohort Regeneration = significant predictors of AUDPS value?
 
 
-
-
 # HEIGHT:WEIGHT  -------------------------------------------------------------
 
 #' only below-ground weight 
 #' height ~ total weight = influenced by height~above-ground weight correlation
 
+# Distribution of root mass data
+ggplot(LP, aes(root_mass, fill = provenance)) +
+  geom_density(alpha = 0.4)
 
+ggplot(LP, aes(root_mass, fill = cohort)) +
+  geom_density(alpha = 0.4)
+
+# correlation between height and root mass
+cor(LP$root_mass, LP$height, method ="pearson", use="complete.obs")
+  # 0.76
+ggplot(LP, aes(root_mass, height)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm", se = TRUE)
 
 # Height-weight relationship based on COHORT:
-ggplot(LP,aes(x=root_dry_mass, y=height_2, color=cohort)) +
+ggplot(LP,aes(x=root_mass, y=height, color=cohort)) +
   geom_point() +
-  geom_smooth(method="lm", se=FALSE) +
+  geom_smooth(method="lm", se=F) +
   theme_minimal() +
-  scale_fill_manual(
-    values = c("Origin" = "#F08080", "Plantation" = "#528B8B", "Regeneration" = "#EEC900"))
+  scale_color_manual(
+    values = cohort_colors) +
+  theme(legend.position = c(0.8, 0.2))
+
 ggsave("HxW_cohort.png")
 
-HxW_int_cohort_mod <- lm(height_2~total_dry_mass * cohort, data=LP)
-summary(HxW_int_cohort_mod)
+HxW_cohort_lm <- lm(height~root_mass * cohort, data=LP)
+summary(HxW_cohort_lm)
   #' reference group = "origin"
-  #' total dry mass = effect of mass on height in Origin cohort -> significant because mass does dictate height
-    #' slope for plantation: 21.589 - 2.579 = 19.01
+  #' root_mass = effect of root mass on height in Origin cohort -> significant because mass does dictate height
+    #' slope for plantation: 36 + 14 = 50 -> for every unit (1 g) increase in root mass there is ~5 cm increase in height
   #' interaction terms:
     #' height x weight relationship (slope) in plantation not sig diff from that in origin
     #' height x weight relationship (the effect of mass on height) in regen IS sig diff from that in origin (shallower slope = tend to be taller for same weight)
@@ -2269,7 +2283,7 @@ summary(HxW_int_cohort_mod)
 # Is slope different between Plantation and Regeneration?
 LP$cohort <- relevel(as.factor(LP$cohort), ref="Plantation")
   # Plantation = reference level
-HxW_int_cohort_mod_2 <- lm(height_2~root_dry_mass * cohort, data=LP)
+HxW_int_cohort_mod_2 <- lm(height~root_mass * cohort, data=LP)
 summary(HxW_int_cohort_mod_2)
 # Origin shortest, regen tallest at same root mass
 
@@ -2281,7 +2295,7 @@ summary(HxW_int_cohort_mod_2)
   #' interaction terms: whether slopes between regen and plantation are different = not significant
 
 # # compare interaction with no interaction model:
-# HxW_cohort_mod <- lm(height_2~total_dry_mass + cohort, data=LP)
+# HxW_cohort_mod <- lm(height~total_dry_mass + cohort, data=LP)
 # summary(HxW_cohort_mod)
 # anova(HxW_cohort_mod, HxW_int_cohort_mod)
 #   => interaction model is  sig diff = better
@@ -2289,12 +2303,12 @@ summary(HxW_int_cohort_mod_2)
 #  Height-weight relationship based on PROVENANCE -------------------------
 
 # VISUAL:
-ggplot(LP,aes(x=root_dry_mass, y=height_2, color=provenance)) +
+ggplot(LP,aes(x=root_mass, y=height, color=provenance)) +
   geom_point() +
   geom_smooth(method="lm", se=FALSE) +
   theme_minimal() +
-  scale_fill_manual(
-    values = cohort_colors) 
+  scale_color_manual(
+    values = provenance_colors) 
 #' mixed relationships (not parallel), but overall smiliar
 #' NC initially taller at same root mass, then shorter at same root mass
 #' little root mass trees shorter than others, but large root mass trees taller than others
@@ -2308,16 +2322,16 @@ ggsave("HxW_proven.png")
 
 # MODEL:
 # Does the height-mass relationship differ between provenances on average across all cohorts?
-HxW_int_prov_mod <- lm(height_2~total_dry_mass * provenance, data=LP)
-summary(HxW_int_proven_mod)
+HxW_prov_lm <- lm(height~root_mass * provenance, data=LP)
+summary(HxW_prov_lm)
   #' Alaska = reference level. Intercept = 35 mm, slope = 21 units mass per 1 unit height
   #' North Coast has sig diff intercept (sig taller at same weight)
   #' slope of NC (21.067-6.357=14.71) = sig diff than Alaska (slope 21.067)
 
-# Is slope different between Plantation and Regeneration?
+# Is slope different between North Coast and Skeena River?
 LP$provenance <- relevel(as.factor(LP$provenance), ref="North Coast")
 # North Coast = reference level
-HxW_int_provenance_mod_2 <- lm(height_2~total_dry_mass * provenance, data=LP)
+HxW_int_provenance_mod_2 <- lm(height~root_mass * provenance, data=LP)
 summary(HxW_int_provenance_mod_2)
 #' North Coast intercept = 51.15, slope = 14.71
 #' intercept between NC & Alaska = sig diff ***
@@ -2326,7 +2340,7 @@ summary(HxW_int_provenance_mod_2)
 #' slope between NC & SR = ***
 
 # Is interaction model better than no interaction model?
-# HxW_proven_mod <- lm(height_2~total_dry_mass + provenance, data=LP)
+# HxW_proven_mod <- lm(height~total_dry_mass + provenance, data=LP)
 # anova(HxW_proven_mod,HxW_int_proven_mod)
 # #  interaction model is  sig diff = better
 # # interaction model assumes different slopes for each provenance
@@ -2339,6 +2353,17 @@ summary(HxW_int_provenance_mod_2)
   #' height as explained by weight and an interaction between provenance (environmental variation) and cohort (rapid adaptation) 
   #'  as well as Block as random factor (micro-environmental variation)
 
+# distribution of tree numbers across north coast, skeena river, alaska when only considering origin and regen?
+ggplot(LP_noPlant, aes(x = provenance, fill=cohort)) +
+  geom_bar(position="stack") +
+  theme_minimal() +
+  labs(
+    x = "Provenance",
+    y = "Number of trees",
+    fill="cohort"
+  ) +
+  scale_fill_manual(values=cohort_colors)
+
 # MODEL 1
 # Interaction excluding Plantation overall
 LP_noPlant <- droplevels(subset(LP, cohort != "Plantation"))
@@ -2346,42 +2371,137 @@ unique(LP_noPlant$cohort)
   # levels (factor?)
 # -> only comparing between Regeneration & Origin but across all provenances
 
+# Visualisation:
+ggplot(LP_noPlant,
+       aes(x = root_mass,
+           y = height,
+           colour = cohort)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm", se=T) +
+  facet_wrap(~ provenance) +
+  theme_bw()
+  
+  #' Alaska has parallel slopes: Origin and Regen behave very similarly 
+  #'  with Origin being shorter at same root mass
+  #' Origin and Regen from NC have crossing slopes 
+  #' cohorts from Skeena River are largely doing the same
+
 # Does the height-mass relationship differ between provenances within each cohort?
-lmer_Int_noPl <- lmer(height_2 ~ root_dry_mass + provenance * cohort + (1|Block), data=LP_noPlant)
+  # ! assumes same slopes for all groups
+LP_noPlant$provenance <- relevel(as.factor(LP_noPlant$provenance), ref="Alaska")
+lmer_Int_noPl <- lmer(height ~ root_mass + provenance * cohort + (1|Block), data=LP_noPlant)
+
 summary(lmer_Int_noPl)
+anova(lmer_Int_noPl)
 
-
-  #' North Coast & Origin = reference levels
-  #' total_dry_mass = intercept of North Coast (height at weight 0 = 14.426)
-  #' both Alaska and Skeena River have positive, significant relationships between height and weight
-  #' skeena river & total dry mass = sig -> the slope of mass vs height is steeper for skeena river compared to North Coast 
-  #'    (14.426 + 13.921 = 28.347 -> every unit increase in height = ~28 units increase in mass)
-  #' Alaska vs. North Coast = not sig anymore (as in simpler model) -> some of variation attributed to provenance is now explained by cohort instead (cohort gets its own effect)
-  #' none of interactions are significant: cohorts alone can't explain remaining difference in slopes
-
-#' -> also compare between North Coast x Origin and North Coast x REgen?
-50.919 -28.385 - 3.92 
-50.919 -28.385 
+# does interaction improve model?
+m0_NoPl <- lmer(height~root_mass + provenance + cohort + provenance:cohort + (1|Block),
+                data = LP_noPlant)
 
 # Model 2 
 # Interaction excluding Alaska overall
 LP_noAlaska <- droplevels(subset(LP, provenance != "Alaska"))
-unique(LP_noAlask$provenance)
-unique(LP_noAlask$cohort)
+unique(LP_noAlaska$provenance)
+unique(LP_noAlaska$cohort)
 # Plantation   Origin       Regeneration
 # -> only comparing between North Coast & Skeena River but across all cohorts
 
+# distribution of tree numbers
+ggplot(LP_noAlaska, aes(x = provenance, fill=cohort)) +
+  geom_bar(position="stack") +
+  theme_minimal() +
+  labs(
+    x = "provenance",
+    y = "Number of trees",
+    fill="cohort"
+  ) +
+  scale_fill_manual(values=cohort_colors)
+
+# facet plot interaction
+ggplot(LP_noAlaska,
+       aes(x = root_mass,
+           y = height,
+           colour = cohort)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm", se=T) +
+  facet_wrap(~ provenance) +
+  theme_bw()
+
 # Does the height-mass relationship differ between provenances within each cohort?
-model_noAlask <- lm(height_2~total_dry_mass*provenance*cohort, data=LP_noAlaska)
+model_noAlask <- lmer(height~root_mass+provenance*cohort + (1|Block), data=LP_noAlaska)
 summary(model_noAlask)
   #' North Coast & Plantation = reference level
   #' Skeena River = weaker height-mass relationship
 
+# Model 3
+  #' exclude Alaska and Plantation entirely, and solely compare between NC, SR, Origin and Regen. 
+LP_noPlantnoAlaska <- droplevels(subset(LP, provenance != "Alaska" & cohort != "Plantation"))
+unique(LP_noPlantnoAlaska$provenance)
+unique(LP_noPlantnoAlaska$cohort)
+
+# Visual:
+ggplot(LP_noPlantnoAlaska,
+       aes(x = root_mass,
+           y = height,
+           colour = cohort)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm", se=T) +
+  facet_wrap(~ provenance) +
+  theme_bw()
+
+model_noPlantnoAlaska <- lmer(height~root_mass*provenance*cohort + (1|Block), data=LP_noPlantnoAlaska)
+summary(model_noPlantnoAlaska)
 
 
+# Root mass fraction ------------------------------------------------------
+
+# Distribution of root mass data
+ggplot(LP_noAlaska, aes(height, fill = cohort)) +
+  geom_density(alpha = 0.4) +
+  scale_fill_manual(values=cohort_colors) +
+  theme_minimal()
+
+ggplot(LP, aes(height, fill = provenance)) +
+  geom_density(alpha = 0.4)
+
+ggplot(LP, aes(RMF, fill = cohort)) +
+  geom_density(alpha = 0.4)
+
+# correlation between height and RMF
+cor(LP$RMF, LP$height, method ="pearson", use="complete.obs")
+# 0.76
+ggplot(LP, aes(RMF, height)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm", se = TRUE) +
+  theme_minimal()
+
+# there is 1 observation with RMF = 0 -> remove
+LP_RMF <- subset(LP, RMF > 0)
+
+# RMF ~ provenance & cohort
+ggplot(LP_RMF,
+       aes(x = cohort,
+           y = RMF,
+           fill = provenance)) +
+  geom_boxplot() +
+  scale_fill_manual(values = provenance_colors) +
+  scale_colour_manual(values = provenance_colors) +
+  theme_minimal()
 
 
+RMF_dist <- ggplot(LP_RMF, 
+                   aes(x=provenance, y=RMF, fill = cohort, 
+                       text = paste("Blcok:", Block,
+                                        "<br>Position:", Position,
+                                        "<br>RMF:", round(RMF, 3)))) +
+  geom_jitter(width = 0.15, alpha = 0.7) +
+  theme_minimal()
 
+
+ggplotly(RMF_dist, tooltip ="text")
+
+min(LP$RMF, na.rm=T)
+library(plotly)
 
 
 
