@@ -2451,7 +2451,7 @@ ggplot(LP_noPlantnoAlaska,
 
 model_noPlantnoAlaska <- lmer(height~root_mass*provenance*cohort + (1|Block), data=LP_noPlantnoAlaska)
 summary(model_noPlantnoAlaska)
-
+AIC(model_noPlantnoAlaska)
 
 # Root mass fraction ------------------------------------------------------
 
