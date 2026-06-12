@@ -70,10 +70,10 @@ unique(data$`Date of budset`)
 #' "Size"
 #'     -> remove               
 #' "DBB (mm)...25"
-#'    -> change to DBB_2
+#'    -> change to diameter / diameter
 #'    -> change to numeric        
 #' "Date measured DBB"
-#'    -> change to date_DBB_2   
+#'    -> change to date_diameter   
 #'    -> change to Julian days        
 #' "Height (cm)...27"
 #'    -> change to height
@@ -94,8 +94,8 @@ LP_all <- data %>%
     "needle_2" = "Needle length 2 (mm)",
     "date_1" = "Date",
     "status_2" = "Status 22/09/2025",
-    "DBB_2" = "DBB (mm)...25",
-    "date_DBB_2" = "Date measured DBB",
+    "diameter" = "DBB (mm)...25",
+    "date_diameter" = "Date measured DBB",
     "height" = "Height (cm)...27",
     "date_height" = "Date measured",
     "cohort" = Type,
@@ -109,110 +109,196 @@ LP_all <- data %>%
   )  %>% 
   select(-c(`Height (cm)...14`, `Needle length 1 (cm)`, `Needle length 2 (cm)`, 
             Ruler, Offset, Size,`Bioassay leaf weight`, `Dry mass > root mass?`)) %>% 
-  mutate(across(c(DBB_1, height_1, needle_1, needle_2, height, DBB_2),as.numeric)) %>% 
+  mutate(across(c(DBB_1, height_1, needle_1, needle_2, height, diameter),as.numeric)) %>% 
   mutate(needle_mean = rowMeans(cbind(needle_1, needle_2), 
                                 na.rm = TRUE)) %>% 
+  mutate(ID = paste(Block, Position, sep="-")) %>% 
+  relocate(ID, .before=1) %>% 
   mutate(Family = ifelse(Family == "sub for LPNC - UKA4 - actually LPNC - UKA1",
                          "LPNC - UKA1",
                          Family))
 
 
-# remove all dead trees
-LP <- subset(LP_all, status_2 == "alive")
+#' remove all dead trees
+#' remove odd trees (taproot, shootroot extreme): 1-58, 7-70
+LP <- LP_all %>% 
+  subset(status_2 == "alive") %>% 
+  filter(!(ID %in% c("1-58", "7-70")))
 
 
+# no Plantation
+LP_noPlant <- droplevels(subset(LP, cohort != "Plantation"))
+
+# no Alaska
+LP_noAlaska <- droplevels(subset(LP, provenance != "Alaska"))
 
 # colour sets -------------------------------------------------------------
 
-cohort_colors <- c(
+cohort_colours <- c(
   "Origin" = "#F08080",
   "Plantation" = "#528B8B",
   "Regeneration" = "#EEC900"
 )
 
-provenance_colors <- c(
+provenance_colours <- c(
   "Alaska" = "#EE6363",
   "North Coast" = "#66CD00",
   "Skeena River" = "#6495ED"
 )
 
-
 # Provenance & cohort distribution ----------------------------------------
 
 ggplot(LP, aes(x=provenance, fill = cohort)) +
   geom_bar(position="dodge") +
-  scale_fill_manual(values=cohort_colors) +
+  scale_fill_manual(values=cohort_colours) +
   theme_minimal()
 
 ggplot(LP, aes(x=cohort, fill = provenance)) +
   geom_bar(position="dodge") +
-  scale_fill_manual(values=provenance_colors) +
+  scale_fill_manual(values=provenance_colours) +
   theme_minimal()
 
 # Trait distributions ------------------------------------------------------
 colnames(LP)
 
 LP_noPlant <- droplevels(subset(LP, cohort != "Plantation"))
-ggplot(LP_noPlant, aes(x = RMF, fill = provenance, color=provenance)) +
+ggplot(LP_noPlant, aes(x = shootroot, fill = provenance, color=provenance)) +
   geom_density(alpha=0.5) +
   theme_minimal() +
   theme(
-    legend.position = c(0.3,1),
+    legend.position = c(0.95,1),
     legend.justification = c("right", "top")
   ) +
-  scale_fill_manual(values=provenance_colors) +
-  scale_color_manual(values=provenance_colors)
+  scale_fill_manual(values=provenance_colours) +
+  scale_color_manual(values=provenance_colours)
 
-
-LP_noAlaska <- droplevels(subset(LP, provenance != "Alaska"))
-ggplot(LP_noAlaska, aes(x = RMF, 
-                       color = cohort, fill = cohort)) +
+ggplot(LP_noAlaska, aes(x = shootroot, color = cohort, fill = cohort)) +
   geom_density(alpha = 0.5) +
   theme_minimal() +
   theme(
-    legend.position = c(0.3,1),
+    legend.position = c(0.95,1),
     legend.justification = c("right", "top")
   ) +
-  scale_fill_manual(values=cohort_colors) +
-  scale_color_manual(values=cohort_colors)
+  scale_fill_manual(values=cohort_colours) +
+  scale_color_manual(values=cohort_colours)
 
-
-# Relationship between variables ------------------------------------------
-
-traits_noAlaska <- LP_noAlaska %>%
-  select(height,
-         DBB_2,
-         needle_mean,
-         total_dry_mass,
-         RMF)
+# 1. Correlations between traits ------------------------------------------
 
 traits_noPlant <- LP_noPlant %>%
-  select(height,
-         DBB_2,
+  select(
+         height,
+         diameter,
          needle_mean,
          total_dry_mass,
-         RMF)
+         RMF,
+         shootroot)
+
+traits_noAlaska <- LP_noAlaska %>%
+  select(
+         height,
+         diameter,
+         needle_mean,
+         total_dry_mass,
+         RMF,
+         shootroot)
+
+# to make line red
+my_smooth <- function(data, mapping, ...) {
+  ggplot(data = data, mapping = mapping) +
+    geom_point(colour = "black", alpha = 0.5) +
+    geom_smooth(
+      method = "loess",
+      se = FALSE,
+      colour = "red"
+    )
+}
 
 ggpairs(traits_noPlant,
         lower = list(
-          continuous = wrap(
-            "smooth",
-            method = "loess",
-            se = FALSE,
-            alpha = 0.4
+          continuous = my_smooth
           )
-        ))
+        )
 
-ggplot(LP, aes(x = DBB_2, y = total_dry_mass)) +
-  geom_point()
-
-# 1. Correlation matrix ---------------------------------------------------
-
-traits <- LP_noAlaska %>% 
-  select(needle_mean, DBB_2, height, total_dry_mass, RMF)
-cor_mat <- cor(traits, method ="pearson",
+# simpler plot
+cor_mat <- cor(traits_noAlaska, method ="pearson",
                use="pairwise.complete.obs")
 ggcorrplot(cor_mat,
            lab = TRUE,
            lab_size = 5,
            type = "lower")
+
+# individual comparisons
+ggplot(LP_noPlant, aes(x=height, y=shootroot)) +
+  geom_point() +
+  geom_smooth(method="loess", col="red") +
+  theme_minimal()
+
+ggplot(LP_noAlaska, aes(x=height, y=shootroot)) +
+  geom_point() +
+  geom_smooth(method="loess", col="red") +
+  theme_minimal()
+
+5/1.5
+# 1b Trait consolidation --------------------------------------------------
+
+# combining height and diameter for overall growth form (tall and slender or short and stocky)
+
+LP$growthform <- LP$height/LP$diameter
+
+ggplot(LP, aes(x = growthform, fill = provenance, color=provenance)) +
+  geom_density(alpha=0.5) +
+  theme_minimal() +
+  theme(
+    legend.position = c(0.95,1),
+    legend.justification = c("right", "top"))
+
+# 1c Trait relationships by provenance and cohort ------------------------
+
+# plot by plot:
+ggplot(LP_noPlant, aes(x =height , y = total_dry_mass , color = provenance)) +
+  geom_point() +
+  scale_colour_manual(values=provenance_colours) +
+  theme_minimal() +
+  geom_smooth(method="lm", se=F)
+
+# series of plots by provenance
+ggpairs(
+  data = LP_noPlant, columns = c("height",
+                                 "diameter",
+                                 "needle_mean",
+                                 "total_dry_mass",
+                                 "RMF",
+                                 "shootroot"),
+  mapping = aes(color=provenance),
+  lower = list(continuous=wrap(
+    "smooth", method="lm", se=F, alpha=0.3
+  )),
+  diag=list(continuous=wrap("densityDiag", alpha=0.6))
+) + 
+  scale_color_manual(values = unique(provenance_colours))+
+  scale_fill_manual(values = unique(provenance_colours)) +
+  theme_bw()
+
+# order of colours is really important
+unique(LP_noPlant$provenance)
+
+
+cohort_colours_2<- c(
+    "Origin" = "#F08080",
+    "Plantation" = "#528B8B",
+    "Regeneration" = "#EEAD0E")
+
+ggpairs(LP_noAlaska, 
+        columns=c("height",
+                  "diameter",
+                   "needle_mean",
+                   "total_dry_mass",
+                   "RMF",
+                  "shootroot"), 
+        aes(colour=cohort),
+        lower=list(continuous=wrap("smooth", se=F, alpha=0.3)), 
+        diag=list(continuous=wrap("densityDiag", alpha=0.6)))+
+  scale_color_manual(values = unique(cohort_colours_2))+
+  scale_fill_manual(values = unique(cohort_colours_2)) +
+  theme_bw()
+    # careful with changing order of cohorts
