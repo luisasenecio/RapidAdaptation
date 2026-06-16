@@ -191,7 +191,8 @@ traits_noPlant <- LP_noPlant %>%
          needle_mean,
          total_dry_mass,
          RMF,
-         shootroot)
+         shootroot,
+         growthform)
 
 traits_noAlaska <- LP_noAlaska %>%
   select(
@@ -200,7 +201,8 @@ traits_noAlaska <- LP_noAlaska %>%
          needle_mean,
          total_dry_mass,
          RMF,
-         shootroot)
+         shootroot,
+         growthform)
 
 # to make line red
 my_smooth <- function(data, mapping, ...) {
@@ -220,7 +222,7 @@ ggpairs(traits_noPlant,
         )
 
 # simpler plot
-cor_mat <- cor(traits_noAlaska, method ="pearson",
+cor_mat <- cor(traits_noPlant, method ="pearson",
                use="pairwise.complete.obs")
 ggcorrplot(cor_mat,
            lab = TRUE,
@@ -238,19 +240,36 @@ ggplot(LP_noAlaska, aes(x=height, y=shootroot)) +
   geom_smooth(method="loess", col="red") +
   theme_minimal()
 
-5/1.5
 # 1b Trait consolidation --------------------------------------------------
 
 # combining height and diameter for overall growth form (tall and slender or short and stocky)
 
 LP$growthform <- LP$height/LP$diameter
 
+# growthform value distribution
 ggplot(LP, aes(x = growthform, fill = provenance, color=provenance)) +
   geom_density(alpha=0.5) +
   theme_minimal() +
   theme(
     legend.position = c(0.95,1),
-    legend.justification = c("right", "top"))
+    legend.justification = c("right", "top")) +
+  ylim(0, max(LP$growthform))
+
+# height & diameter boxplots
+ggplot(LP, aes(y = growthform, x = cohort, fill = provenance, color=provenance)) +
+  geom_boxplot(alpha=0.5) +
+  theme_minimal() +
+  theme(
+    legend.justification = c("right", "top")) +
+  ylim(0,max(LP$growthform))
+
+ggplot(LP_noAlaska, aes(x = diameter, y = height, color=cohort)) +
+  geom_point() +
+  geom_smooth(method="lm") +
+  theme_minimal() +
+  theme(
+    legend.justification = c("right", "top")) +
+  scale_color_manual(values=cohort_colours)
 
 # 1c Trait relationships by provenance and cohort ------------------------
 
@@ -294,7 +313,8 @@ ggpairs(LP_noAlaska,
                    "needle_mean",
                    "total_dry_mass",
                    "RMF",
-                  "shootroot"), 
+                  "shootroot", 
+                  "growthform"), 
         aes(colour=cohort),
         lower=list(continuous=wrap("smooth", se=F, alpha=0.3)), 
         diag=list(continuous=wrap("densityDiag", alpha=0.6)))+
@@ -302,3 +322,10 @@ ggpairs(LP_noAlaska,
   scale_fill_manual(values = unique(cohort_colours_2)) +
   theme_bw()
     # careful with changing order of cohorts
+
+
+
+
+# PCA ---------------------------------------------------------------------
+
+
