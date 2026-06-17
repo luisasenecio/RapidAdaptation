@@ -5,21 +5,27 @@ library(tidyr)
 library(readxl)
 library(tidyverse)
 library(colourpicker)
+library(car)
 library(lme4)
+library(lmerTest)
 library(glmmTMB)
 library(emmeans)
 library(plotly)
 library(corrplot)
 library(ggcorrplot)
 library(GGally)
-
-
+library(ggpattern)
 
 # Import & clean data -----------------------------------------------------
 
 setwd("C:/Users/luidnn/OneDrive - UKCEH/Documents/R projects/RapidAdaptation")
 
 data <- read_excel("P:/07793_newLEAF/Workfiles/WP4/RapidAdaptationTrial_MasterSheet.xlsx", sheet = "Pinus contorta")
+minitab_noPlantation_data <- read_excel("C:/Users/luidnn/OneDrive - UKCEH/Documents/R projects/RapidAdaptation/RapidAdaptation_minitab_LP.xlsx", sheet="noPlantation_clean")
+minitab_noAlaska_data <- read_excel("C:/Users/luidnn/OneDrive - UKCEH/Documents/R projects/RapidAdaptation/RapidAdaptation_minitab_LP.xlsx", sheet="noAlaska_clean")
+
+head(minitab_noPlantation_data)
+head(minitab_noAlaska_data)
 
 head(data)
 str(data)
@@ -148,6 +154,7 @@ provenance_colours <- c(
 
 # Provenance & cohort distribution ----------------------------------------
 
+
 ggplot(LP, aes(x=provenance, fill = cohort)) +
   geom_bar(position="dodge") +
   scale_fill_manual(values=cohort_colours) +
@@ -158,11 +165,10 @@ ggplot(LP, aes(x=cohort, fill = provenance)) +
   scale_fill_manual(values=provenance_colours) +
   theme_minimal()
 
-# Trait distributions ------------------------------------------------------
-colnames(LP)
+# 1a Trait distributions ------------------------------------------------------
 
 LP_noPlant <- droplevels(subset(LP, cohort != "Plantation"))
-ggplot(LP_noPlant, aes(x = shootroot, fill = provenance, color=provenance)) +
+ggplot(LP_noPlant, aes(x = slenderness, fill = provenance, color=provenance)) +
   geom_density(alpha=0.5) +
   theme_minimal() +
   theme(
@@ -172,7 +178,8 @@ ggplot(LP_noPlant, aes(x = shootroot, fill = provenance, color=provenance)) +
   scale_fill_manual(values=provenance_colours) +
   scale_color_manual(values=provenance_colours)
 
-ggplot(LP_noAlaska, aes(x = shootroot, color = cohort, fill = cohort)) +
+LP_noAlaska <- droplevels(subset(LP, provenance != "Alaska"))
+ggplot(LP_noAlaska, aes(x = slenderness, color = cohort, fill = cohort)) +
   geom_density(alpha = 0.5) +
   theme_minimal() +
   theme(
@@ -182,7 +189,54 @@ ggplot(LP_noAlaska, aes(x = shootroot, color = cohort, fill = cohort)) +
   scale_fill_manual(values=cohort_colours) +
   scale_color_manual(values=cohort_colours)
 
-# 1. Correlations between traits ------------------------------------------
+# 1b Trait boxplots by cohort and provenance ---------------------------------
+
+LP_long <- LP %>%
+  select(ID, provenance, cohort, height, RMF, slenderness, needle_mean) %>%
+  pivot_longer(
+    cols = c(height, RMF, slenderness, needle_mean),
+    names_to = "trait",
+    values_to = "value"
+  )
+
+LP_long <- LP_long %>%
+  mutate(
+    cohort = as.factor(cohort),
+    provenance = as.factor(provenance),
+    trait = as.factor(trait)
+  )
+
+ggplot(LP_long, aes(x = cohort, y = value, fill = provenance)) +
+  geom_boxplot(position = position_dodge(width = 0.8)) +
+  facet_wrap(~ trait, scales = "free_y") +
+  scale_fill_grey(start = 0.2, end = 0.8) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        strip.text = element_text(face = "bold")) +
+  scale_fill_manual(values=provenance_colours) +
+  scale_y_continuous(limits = c(0, NA))
+
+# anova 
+# no Plantation
+mod_height_noPlant <- aov(height~cohort*provenance, data = LP_noPlant)
+
+plot(mod_height_noPlant)
+
+summary(mod_height_noPlant)
+emmeans(mod_height_noPlant, pairwise ~ cohort | provenance, adjust="tukey")
+
+# no Alaska
+mod_height_noAlaska <- aov(height~cohort*provenance, data = LP_noAlaska)
+
+plot(mod_height_noAlaska)
+
+summary(mod_height_noAlaska)
+emmeans(mod_height_noAlaska, pairwise ~ cohort | provenance , adjust="tukey")
+
+# unsure how to compare with different datasets as the one that was used to construct boxplot
+#' can't run model with full dataset because it will compare unbalanced combinations
+
+# 2. Correlations between traits ------------------------------------------
 
 traits_noPlant <- LP_noPlant %>%
   select(
@@ -192,7 +246,7 @@ traits_noPlant <- LP_noPlant %>%
          total_dry_mass,
          RMF,
          shootroot,
-         growthform)
+         slenderness)
 
 traits_noAlaska <- LP_noAlaska %>%
   select(
@@ -202,7 +256,7 @@ traits_noAlaska <- LP_noAlaska %>%
          total_dry_mass,
          RMF,
          shootroot,
-         growthform)
+         slenderness)
 
 # to make line red
 my_smooth <- function(data, mapping, ...) {
@@ -240,28 +294,28 @@ ggplot(LP_noAlaska, aes(x=height, y=shootroot)) +
   geom_smooth(method="loess", col="red") +
   theme_minimal()
 
-# 1b Trait consolidation --------------------------------------------------
+# 2b Trait consolidation --------------------------------------------------
 
 # combining height and diameter for overall growth form (tall and slender or short and stocky)
 
-LP$growthform <- LP$height/LP$diameter
+LP$slenderness <- LP$height/LP$diameter
 
-# growthform value distribution
-ggplot(LP, aes(x = growthform, fill = provenance, color=provenance)) +
+# slenderness value distribution
+ggplot(LP, aes(x = slenderness, fill = provenance, color=provenance)) +
   geom_density(alpha=0.5) +
   theme_minimal() +
   theme(
     legend.position = c(0.95,1),
     legend.justification = c("right", "top")) +
-  ylim(0, max(LP$growthform))
+  ylim(0, max(LP$slenderness))
 
 # height & diameter boxplots
-ggplot(LP, aes(y = growthform, x = cohort, fill = provenance, color=provenance)) +
+ggplot(LP, aes(y = slenderness, x = cohort, fill = provenance, color=provenance)) +
   geom_boxplot(alpha=0.5) +
   theme_minimal() +
   theme(
     legend.justification = c("right", "top")) +
-  ylim(0,max(LP$growthform))
+  ylim(0,max(LP$slenderness))
 
 ggplot(LP_noAlaska, aes(x = diameter, y = height, color=cohort)) +
   geom_point() +
@@ -271,7 +325,7 @@ ggplot(LP_noAlaska, aes(x = diameter, y = height, color=cohort)) +
     legend.justification = c("right", "top")) +
   scale_color_manual(values=cohort_colours)
 
-# 1c Trait relationships by provenance and cohort ------------------------
+# 2c Trait relationships by provenance and cohort ------------------------
 
 # plot by plot:
 ggplot(LP_noPlant, aes(x =height , y = total_dry_mass , color = provenance)) +
@@ -314,7 +368,7 @@ ggpairs(LP_noAlaska,
                    "total_dry_mass",
                    "RMF",
                   "shootroot", 
-                  "growthform"), 
+                  "slenderness"), 
         aes(colour=cohort),
         lower=list(continuous=wrap("smooth", se=F, alpha=0.3)), 
         diag=list(continuous=wrap("densityDiag", alpha=0.6)))+
@@ -323,9 +377,148 @@ ggpairs(LP_noAlaska,
   theme_bw()
     # careful with changing order of cohorts
 
+# 3. Variance partitioning ---------------------------------------------------------------
+
+
+# Annika's minitab data
+
+variance_noPlant <- minitab_noPlantation_data %>% 
+  mutate(
+    prop_var = as.numeric(prop_var),
+    prop_Std = as.numeric(prop_Std),
+    variance = as.numeric(variance),
+    perc_variance = prop_var * 100,
+    perc_Std = prop_Std * 100
+  ) %>% 
+  filter(model != "nested" & source != "Total")
+
+head(minitab_noPlantation_data)
+head(variance_noPlant)
+unique(variance_noPlant$source)
+
+ggplot(variance_noPlant, aes(x = trait, y = perc_variance, pattern = source)) +
+  geom_col_pattern(
+    aes(fill=source),
+    colour="black",
+    linewidth=0.5,
+    pattern_fill = "black",
+    pattern_colour = "black",
+    pattern_density = 0.1,
+    pattern_spacing = 0.02
+  ) +
+  scale_fill_grey(start = 0.2, end = 0.9) +
+  theme_minimal()
+
+# no Alaska
+variance_noAlaska <- minitab_noAlaska_data %>% 
+  mutate(
+    prop_var = as.numeric(prop_var),
+    prop_Std = as.numeric(prop_Std),
+    variance = as.numeric(variance),
+    perc_variance = prop_var * 100,
+    perc_Std = prop_Std * 100
+  ) %>% 
+  filter(model != "nested" & source != "Total")
+
+ggplot(variance_noAlaska, aes(x = trait, y = perc_variance, pattern = source)) +
+  geom_col_pattern(
+    aes(fill=source),
+    colour="black",
+    linewidth=0.5,
+    pattern_fill = "black",
+    pattern_colour = "black",
+    pattern_density = 0.1,
+    pattern_spacing = 0.02
+  ) +
+  scale_fill_grey(start = 0.2, end = 0.9) +
+  theme_minimal()
+
+
+# 4. PCA ------------------------------------------------------------------
+
+# no plantation
+LP_noPlant_pca <- LP_noPlant %>% 
+  select(height, RMF, needle_mean, slenderness)
+
+str(LP_noPlant_pca)
+boxplot(LP_noPlant_pca[, c("height","RMF","needle_mean","slenderness")])
+colSums(is.na(LP_noPlant_pca))
+# remove trees with any NAs
+# some outliers in height and slenderness
+# standardise traits to same scale
+
+# no Alaska
 
 
 
-# PCA ---------------------------------------------------------------------
+# Kit's PCA ---------------------------------------------------------------------
 
+# calculating eigenvectors and eigenvalues for genotype data
+pca <- snpgdsPCA(
+  geno_gds,                # a SNP GDS file, contains genotype data for each tree
+  autosome.only = FALSE
+)
 
+# creating a vector: percentage for variance proportion
+pc.percent <- pca$varprop * 100
+
+# importing trait data
+Keyfile_sequenced_Psylvestris <- read_excel(
+  "P:/07793_newLEAF/Workfiles/WP4/Rapid adaptation(SP)/Keyfile_sequenced_Psylvestris.xlsx",
+  col_types = c(
+    "text",    # Trees ID
+    "text",    # Family final
+    "text",    # Family group final
+    "text",    # Soil Final
+    "numeric", # Height 2024
+    "numeric", # Height 2025
+    "numeric", # Shoot-to-root ratio
+    "numeric"  # Root mass fraction
+  )
+)
+
+# matching tree IDs from genotype data to genotyping PCA coordinates
+# using first two PCs, adding coordinates for each tree
+pca_df <- data.frame(
+  Trees_ID_clean = read.gdsn(index.gdsn(geno_gds, "sample.id")),
+  PC1 = pca$eigenvect[, 1],
+  PC2 = pca$eigenvect[, 2]
+)
+
+# adding trait data to PCA coordinates for each tree
+pca_df <- left_join(
+  pca_df,
+  Keyfile_sequenced_Psylvestris,
+  by = "Trees_ID_clean"
+)
+
+# making soil traits into factors
+pca_df <- pca_df %>%
+  mutate(
+    `Soil Final` = factor(`Soil Final`, levels = c("L", "M", "H")),
+    `Family group final` = factor(`Family group final`, levels = c("O", "L", "M", "H"))
+  )
+
+# plot PCA, using soil traits as ellipses
+pca_plot <- ggplot(pca_df, aes(
+  PC1, PC2,
+  color = `Family group final`,
+  shape = `Soil Final`
+)) +
+  geom_point(size = 3, alpha = 0.85) +
+  theme_classic(base_size = 14) +
+  xlab(paste0("PC1 (", round(pc.percent[1], 1), "%)")) +
+  ylab(paste0("PC2 (", round(pc.percent[2], 1), "%)")) +
+  labs(
+    colour = "Family group",
+    shape = "Soil treatment"
+  ) +
+  theme(
+    legend.position = "right"
+  )
+
+ggsave(
+  filename = file.path(fig_dir, "PCA_family_soil.svg"),
+  plot = pca_plot,
+  width = 7, height = 6
+)
