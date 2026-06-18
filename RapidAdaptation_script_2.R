@@ -113,6 +113,11 @@ LP_all <- data %>%
     "total_dry_mass" = "Total dry mass (g)",
     "RMF" = "Root mass fraction (RMF)"
   )  %>% 
+  mutate(
+    height = as.numeric(height),
+    diameter = as.numeric(diameter),
+    slenderness = height / diameter
+  ) %>% 
   select(-c(`Height (cm)...14`, `Needle length 1 (cm)`, `Needle length 2 (cm)`, 
             Ruler, Offset, Size,`Bioassay leaf weight`, `Dry mass > root mass?`)) %>% 
   mutate(across(c(DBB_1, height_1, needle_1, needle_2, height, diameter),as.numeric)) %>% 
@@ -123,7 +128,6 @@ LP_all <- data %>%
   mutate(Family = ifelse(Family == "sub for LPNC - UKA4 - actually LPNC - UKA1",
                          "LPNC - UKA1",
                          Family))
-
 
 #' remove all dead trees
 #' remove odd trees (taproot, shootroot extreme): 1-58, 7-70
@@ -154,7 +158,6 @@ provenance_colours <- c(
 
 # Provenance & cohort distribution ----------------------------------------
 
-
 ggplot(LP, aes(x=provenance, fill = cohort)) +
   geom_bar(position="dodge") +
   scale_fill_manual(values=cohort_colours) +
@@ -164,6 +167,30 @@ ggplot(LP, aes(x=cohort, fill = provenance)) +
   geom_bar(position="dodge") +
   scale_fill_manual(values=provenance_colours) +
   theme_minimal()
+
+# originally planted
+ggplot(LP_all, aes(x=cohort, fill = provenance)) +
+  geom_bar(position="dodge") +
+  scale_fill_manual(values=provenance_colours) +
+  theme_minimal()
+
+# proportion alive
+prop_alive <- LP_all %>% 
+  group_by(provenance, cohort) %>% 
+  summarise(
+    total = n(),
+    alive = sum(status_2 == "alive"),
+    perc_alive = alive / total *100,
+    .groups ="drop"
+  )
+
+ggplot(prop_alive, aes(y=perc_alive, x = cohort, fill = provenance)) +
+  geom_col(position="dodge") +
+  theme_minimal() +
+  scale_fill_manual(values=provenance_colours) +
+  labs(
+    y = "Percentage alive") +
+  scale_y_continuous(limits=c(0,100))
 
 # 1a Trait distributions ------------------------------------------------------
 
@@ -276,12 +303,21 @@ ggpairs(traits_noPlant,
         )
 
 # simpler plot
-cor_mat <- cor(traits_noPlant, method ="pearson",
+cor_mat <- cor(traits_noAlaska, method ="pearson",
                use="pairwise.complete.obs")
 ggcorrplot(cor_mat,
            lab = TRUE,
            lab_size = 5,
-           type = "lower")
+           type = "lower") +
+  scale_fill_gradient2(
+    low="#1874CD",
+    mid="white",
+    high = "#CD3700",
+    midpoint = 0,
+    limits = c(-1,1)
+  )
+
+c("#1874CD", "#EE5C42", "#CD3700", "#EE4000", "#104E8B", "#FFFFFF")
 
 # individual comparisons
 ggplot(LP_noPlant, aes(x=height, y=shootroot)) +
