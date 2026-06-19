@@ -15,6 +15,7 @@ library(corrplot)
 library(ggcorrplot)
 library(GGally)
 library(ggpattern)
+library(ggrepel)
 
 # Import & clean data -----------------------------------------------------
 
@@ -472,20 +473,131 @@ ggplot(variance_noAlaska, aes(x = trait, y = perc_variance, pattern = source)) +
 
 # 4. PCA ------------------------------------------------------------------
 
-# no plantation
-LP_noPlant_pca <- LP_noPlant %>% 
-  select(height, RMF, needle_mean, slenderness)
+# only keep trees that have values for all traits
+traits <- c("height", "RMF", "needle_mean", "slenderness")
+LP_pca_clean <- LP %>% 
+  drop_na(all_of(traits))
 
-str(LP_noPlant_pca)
-boxplot(LP_noPlant_pca[, c("height","RMF","needle_mean","slenderness")])
-colSums(is.na(LP_noPlant_pca))
-# remove trees with any NAs
-# some outliers in height and slenderness
-# standardise traits to same scale
+pca_traits <- LP_pca_clean %>%
+  select(
+    height,
+    needle_mean,
+    RMF,
+    slenderness) 
 
-# no Alaska
+# construct PCA
+pca <- prcomp(pca_traits, scale.=TRUE)
+summary(pca)
 
+pca_df <- as.data.frame(pca$x) %>% 
+  mutate(cohort=LP_pca_clean$cohort,
+         provenance=LP_pca_clean$provenance)
 
+# Cohort
+ggplot(pca_df, aes(PC1, PC2, colour = cohort)) +
+  geom_point(size = 3, alpha = 0.8) +
+  stat_ellipse(aes(group=cohort, fill=cohort), 
+               linewidth=0.1,
+               geom="polygon",
+               alpha=0.3,
+               colour=NA) +
+  geom_point(data=centroids_cohort,
+             aes(PC1, PC2, colour = cohort),
+             shape = 4, size = 5, stroke = 3) +
+  scale_fill_manual(values = cohort_colours) +     
+  scale_colour_manual(values = cohort_colours) + 
+  guides(fill="none") +
+  theme_minimal(base_size = 14) +
+  labs(
+    x = paste0("PC1 (", round(summary(pca)$importance[2,1] * 100, 1), "%)"),
+    y = paste0("PC2 (", round(summary(pca)$importance[2,2] * 100, 1), "%)"),
+    colour = "Cohort"
+    )
+
+# cohhort centroids
+centroids_cohort <- pca_df %>% 
+  group_by(cohort) %>% 
+  summarise(
+    PC1=mean(PC1),
+    PC2=mean(PC2),
+    .groups="drop"
+  )
+centroids_cohort
+
+# Provenance
+ggplot(pca_df, aes(PC1, PC2, colour = provenance)) +
+  geom_point(size = 3, alpha = 0.8) +
+  stat_ellipse(aes(group=provenance, fill=provenance), 
+               linewidth=0.1,
+               geom="polygon",
+               alpha=0.3,
+               colour=NA) +
+  geom_point(data=centroids_provenance,
+             aes(PC1, PC2, colour = provenance),
+             shape = 4, size = 5, stroke = 3) +
+  scale_fill_manual(values = provenance_colours) +     
+  scale_colour_manual(values = provenance_colours) + 
+  guides(fill="none") +
+  theme_minimal(base_size = 14) +
+  labs(
+    x = paste0("PC1 (", round(summary(pca)$importance[2,1] * 100, 1), "%)"),
+    y = paste0("PC2 (", round(summary(pca)$importance[2,2] * 100, 1), "%)"),
+    colour = "Provenance"
+  )
+
+# provenance centroids
+centroids_provenance <- pca_df %>% 
+  group_by(provenance) %>% 
+  summarise(
+    PC1=mean(PC1),
+    PC2=mean(PC2),
+    .groups="drop"
+  )
+centroids_provenance
+  
+
+# Statistical tests on centroids
+library(vegan)
+library(pairwiseAdonis)
+
+# cohort
+adonis_result_cohort <- adonis2(
+  pca_traits ~cohort,
+  data=pca_df,
+  method="euclidian"
+)
+adonis_result_cohort
+# sig diff because of centroids or dispersion?
+dispersion_cohort <- betadisper(dist(pca_traits), pca_df$cohort)
+anova(dispersion_cohort)
+  #' not sig -> cohorts don't differ because of dispersion
+
+# which cohorts differ
+pairwise.adonis2(
+  pca_traits~cohort,
+  data=pca_df
+)
+install.packages("pairwiseAdonis")
+# not available
+
+manova_res_cohort <- manova(as.matrix(pca$x) ~ pca_df$cohort)
+summary(manova_res_cohort, test="Pillai")
+
+# provenance
+adonis_result_provenance <- adonis2(
+  pca_traits ~provenance,
+  data=pca_df,
+  method="euclidian"
+)
+adonis_result_provenance
+# sig diff because of centroids or dispersion?
+dispersion_provenance <- betadisper(dist(pca_traits), pca_df$provenance)
+anova(dispersion_provenance)
+  # dispersion not sig
+
+  
+# which traits contribute to PC1 and which ones to PC2?
+pca$rotation
 
 # Kit's PCA ---------------------------------------------------------------------
 
