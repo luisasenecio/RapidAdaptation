@@ -159,12 +159,12 @@ provenance_colours <- c(
 
 # Provenance & cohort distribution ----------------------------------------
 
-ggplot(LP, aes(x=provenance, fill = cohort)) +
+ggplot(LP_noAlaska, aes(x=provenance, fill = cohort)) +
   geom_bar(position="dodge") +
   scale_fill_manual(values=cohort_colours) +
   theme_minimal()
 
-ggplot(LP, aes(x=cohort, fill = provenance)) +
+ggplot(LP_noAlaska, aes(x=cohort, fill = provenance)) +
   geom_bar(position="dodge") +
   scale_fill_manual(values=provenance_colours) +
   theme_minimal()
@@ -177,7 +177,7 @@ ggplot(LP_all, aes(x=cohort, fill = provenance)) +
 
 # proportion alive
 prop_alive <- LP_all %>% 
-  group_by(provenance, cohort) %>% 
+  group_by(cohort) %>% 
   summarise(
     total = n(),
     alive = sum(status_2 == "alive"),
@@ -185,13 +185,21 @@ prop_alive <- LP_all %>%
     .groups ="drop"
   )
 
-ggplot(prop_alive, aes(y=perc_alive, x = cohort, fill = provenance)) +
+ggplot(prop_alive, aes(y=perc_alive, x = cohort, fill=cohort)) +
   geom_col(position="dodge") +
   theme_minimal() +
-  scale_fill_manual(values=provenance_colours) +
+  scale_fill_manual(values=cohort_colours) +
   labs(
-    y = "Percentage alive") +
-  scale_y_continuous(limits=c(0,100))
+    y = "Percentage alive",
+    x=NULL) +
+  scale_y_continuous(limits=c(0,100)) +
+  theme(legend.position="none",
+        axis.title.y = element_text(size = 18),
+        axis.text.x  = element_text(size = 14),
+        axis.text.y  = element_text(size = 14)
+  )
+
+ggsave("Perc_alive.png", dpi=300)
 
 # 1a Trait distributions ------------------------------------------------------
 
@@ -219,7 +227,7 @@ ggplot(LP_noAlaska, aes(x = slenderness, color = cohort, fill = cohort)) +
 
 # 1b Trait boxplots by cohort and provenance ---------------------------------
 
-LP_long <- LP %>%
+LP_long <- LP_noAlaska %>%
   select(ID, provenance, cohort, height, RMF, slenderness, needle_mean) %>%
   pivot_longer(
     cols = c(height, RMF, slenderness, needle_mean),
@@ -234,15 +242,37 @@ LP_long <- LP_long %>%
     trait = as.factor(trait)
   )
 
-ggplot(LP_long, aes(x = cohort, y = value, fill = provenance)) +
+ggplot(LP_long, aes(x = cohort, y = value, fill=cohort)) +
   geom_boxplot(position = position_dodge(width = 0.8)) +
-  facet_wrap(~ trait, scales = "free_y") +
+  facet_wrap(~ trait, scales = "free_y",
+             labeller=labeller(trait=c(
+               height="Height (cm)",
+               needle_mean="Mean needle length (mm)",
+               RMF="Root mass fraction",
+               slenderness="Slenderness"
+             ))) +
   scale_fill_grey(start = 0.2, end = 0.8) +
   theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1),
-        strip.text = element_text(face = "bold")) +
-  scale_fill_manual(values=provenance_colours) +
-  scale_y_continuous(limits = c(0, NA))
+  theme(
+        strip.text = element_text(face = "bold", size = 16),
+        legend.position="none",
+        axis.text.x = element_text(, size =18, hjust = 1),
+        axis.text.y  = element_text(size = 18)) +
+  scale_fill_manual(values=cohort_colours) +
+  scale_y_continuous(limits = c(0, NA)) +
+  labs(y=NULL,
+       x=NULL) +
+  scale_x_discrete(labels=c(
+    "Origin"="O",
+    "Plantation"="P",
+    "Regeneration"="R"
+  ))
+
+ggsave("trait_boxplots.png", 
+       width = 22.01,
+       height = 19.84,
+       units = "cm",
+       dpi=300)
 
 # anova 
 # no Plantation
@@ -254,15 +284,15 @@ summary(mod_height_noPlant)
 emmeans(mod_height_noPlant, pairwise ~ cohort | provenance, adjust="tukey")
 
 # no Alaska
-mod_height_noAlaska <- aov(height~cohort*provenance, data = LP_noAlaska)
+mod_height_noAlaska <- aov(height~cohort, data = LP_noAlaska)
+mod_needle_noAlaska <- aov(needle_mean~cohort, data = LP_noAlaska)
+mod_RMF_noAlaska <- aov(RMF~cohort, data = LP_noAlaska)
+mod_slenderness_noAlaska <- aov(slenderness~cohort, data = LP_noAlaska)
 
-plot(mod_height_noAlaska)
+plot(mod_slenderness_noAlaska)
 
-summary(mod_height_noAlaska)
-emmeans(mod_height_noAlaska, pairwise ~ cohort | provenance , adjust="tukey")
-
-# unsure how to compare with different datasets as the one that was used to construct boxplot
-#' can't run model with full dataset because it will compare unbalanced combinations
+summary(mod_slenderness_noAlaska)
+emmeans(mod_slenderness_noAlaska, pairwise ~ cohort, adjust="tukey")
 
 # 2. Correlations between traits ------------------------------------------
 
@@ -311,14 +341,34 @@ ggcorrplot(cor_mat,
            lab_size = 5,
            type = "lower") +
   scale_fill_gradient2(
+    name="Correlation",
     low="#1874CD",
     mid="white",
     high = "#CD3700",
     midpoint = 0,
     limits = c(-1,1)
-  )
+  ) +
+  scale_x_discrete(labels=c(
+    shootroot="shoot:root",
+    total_dry_mass="Total dry mass",
+    needle_mean="Mean needle length",
+    diameter="Diameter",
+    height="Height",
+    slenderness="Slenderness"
+  )) +
+  scale_y_discrete(labels=c(
+    shootroot="shoot:root",
+    total_dry_mass="Total dry mass",
+    needle_mean="Mean needle length",
+    diameter="Diameter",
+    height="Height"
+      )) +
+  theme(axis.text.x = element_text(, size =14),
+        axis.text.y  = element_text(size = 14),
+        legend.title=element_text(margin=margin(b=10)))
+  
 
-c("#1874CD", "#EE5C42", "#CD3700", "#EE4000", "#104E8B", "#FFFFFF")
+ggsave("trait_corr.png", dpi=300)
 
 # individual comparisons
 ggplot(LP_noPlant, aes(x=height, y=shootroot)) +
@@ -416,9 +466,99 @@ ggpairs(LP_noAlaska,
 
 # 3. Variance partitioning ---------------------------------------------------------------
 
-
 # Annika's minitab data
 
+# no Alaska
+# reorder source and trait levels for plot aesthetics
+head(minitab_noAlaska_data)
+unique(minitab_noAlaska_data$trait)
+
+variance_noAlaska <- minitab_noAlaska_data %>% 
+  mutate(
+    prop_var = as.numeric(prop_var),
+    prop_Std = as.numeric(prop_Std),
+    variance = as.numeric(variance),
+    perc_variance = prop_var * 100,
+    perc_Std = prop_Std * 100
+  ) %>% 
+  filter(model != "nested" & source != "Total") %>% 
+  mutate(
+    trait = factor(trait,
+                   levels=c("height", "needle", "RMF", 
+                            "slenderness")),
+    source=factor(source,
+                  c("provenance", "cohort", "cohort*provenance", 
+                    "Block", "Error"))
+  )
+
+           
+cols <- scales::hue_pal()(length(levels(variance_noAlaska$source)))
+names(cols) <- levels(variance_noAlaska$source)
+
+# override just "Error"
+cols["Error"] <- "grey"
+
+# define labels
+source_labels <- c(
+  "provenance" = "Provenance",
+  "cohort" = "Cohort",
+  "cohort*provenance" = "Cohort × Provenance",
+  "Block" = "Block",
+  "Error" = "Error"
+)
+
+# define sources
+pattern_vals <- c(
+  "provenance" = "stripe",
+  "cohort" = "circle",
+  "cohort*provenance" = "crosshatch",
+  "Block" = "circle",
+  "Error" = "none"
+)
+
+# patterned stacked barplot
+ggplot(variance_noAlaska,
+       aes(x = trait, y = perc_variance,
+           fill = source, pattern = source)) +
+  geom_col_pattern(
+    colour = "black",
+    linewidth = 0.5,
+    pattern_fill = "black",
+    pattern_colour = "black",
+    pattern_density = 0.1,
+    pattern_spacing = 0.02
+  ) +
+  scale_fill_manual(values = cols, name = "Source", labels = source_labels) +
+  scale_pattern_manual(values = pattern_vals, name = "Source", labels = source_labels) +
+  guides(pattern = "none") +
+  scale_x_discrete(labels = c(
+    "height" = "Height",
+    "needle_mean" = "Needle length",
+    "RMF" = "RMF",
+    "slenderness" = "Slenderness"
+  )) +
+  labs(y = "Percent variance", x = NULL) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(size = 18),
+    axis.text.y = element_text(size = 18),
+    axis.title.y = element_text(size = 20),
+    legend.title = element_text(size = 16),
+    legend.text = element_text(size = 14)
+  )
+
+ggsave("variance_partitioning.png", 
+       width = 22.01,
+       height = 19.84,
+       units = "cm",
+       dpi=300)
+
+
+
+
+
+
+# no Plantation
 variance_noPlant <- minitab_noPlantation_data %>% 
   mutate(
     prop_var = as.numeric(prop_var),
@@ -446,31 +586,7 @@ ggplot(variance_noPlant, aes(x = trait, y = perc_variance, pattern = source)) +
   scale_fill_grey(start = 0.2, end = 0.9) +
   theme_minimal()
 
-# no Alaska
-variance_noAlaska <- minitab_noAlaska_data %>% 
-  mutate(
-    prop_var = as.numeric(prop_var),
-    prop_Std = as.numeric(prop_Std),
-    variance = as.numeric(variance),
-    perc_variance = prop_var * 100,
-    perc_Std = prop_Std * 100
-  ) %>% 
-  filter(model != "nested" & source != "Total")
-
-ggplot(variance_noAlaska, aes(x = trait, y = perc_variance, pattern = source)) +
-  geom_col_pattern(
-    aes(fill=source),
-    colour="black",
-    linewidth=0.5,
-    pattern_fill = "black",
-    pattern_colour = "black",
-    pattern_density = 0.1,
-    pattern_spacing = 0.02
-  ) +
-  scale_fill_grey(start = 0.2, end = 0.9) +
-  theme_minimal()
-
-
+      
 # 4. PCA ------------------------------------------------------------------
 
 # only keep trees that have values for all traits
