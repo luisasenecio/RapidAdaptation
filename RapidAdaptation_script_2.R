@@ -27,6 +27,7 @@ minitab_noAlaska_data <- read_excel("C:/Users/luidnn/OneDrive - UKCEH/Documents/
 
 head(minitab_noPlantation_data)
 head(minitab_noAlaska_data)
+unique(minitab_noAlaska_data$trait)
 
 head(data)
 str(data)
@@ -254,13 +255,14 @@ ggplot(LP_long, aes(x = cohort, y = value, fill=cohort)) +
   scale_fill_grey(start = 0.2, end = 0.8) +
   theme_minimal() +
   theme(
-        strip.text = element_text(face = "bold", size = 16),
+        strip.text = element_text(face = "bold", size = 20),
         legend.position="none",
         axis.text.x = element_text(, size =18, hjust = 1),
-        axis.text.y  = element_text(size = 18)) +
+        axis.text.y  = element_text(size = 18),
+        axis.title.y=element_text(size=20, vjust = 2)) +
   scale_fill_manual(values=cohort_colours) +
   scale_y_continuous(limits = c(0, NA)) +
-  labs(y=NULL,
+  labs(y="Trait value",
        x=NULL) +
   scale_x_discrete(labels=c(
     "Origin"="O",
@@ -269,8 +271,8 @@ ggplot(LP_long, aes(x = cohort, y = value, fill=cohort)) +
   ))
 
 ggsave("trait_boxplots.png", 
-       width = 22.01,
-       height = 19.84,
+       width = 19.91,
+       height = 14.68,
        units = "cm",
        dpi=300)
 
@@ -504,7 +506,7 @@ source_labels <- c(
   "cohort" = "Cohort",
   "cohort*provenance" = "Cohort × Provenance",
   "Block" = "Block",
-  "Error" = "Error"
+  "Error" = "Residual"
 )
 
 # define sources
@@ -533,23 +535,32 @@ ggplot(variance_noAlaska,
   guides(pattern = "none") +
   scale_x_discrete(labels = c(
     "height" = "Height",
-    "needle_mean" = "Needle length",
+    "needle" = "Needle length",
     "RMF" = "RMF",
     "slenderness" = "Slenderness"
   )) +
   labs(y = "Percent variance", x = NULL) +
   theme_minimal() +
   theme(
-    axis.text.x = element_text(size = 18),
-    axis.text.y = element_text(size = 18),
-    axis.title.y = element_text(size = 20),
-    legend.title = element_text(size = 16),
-    legend.text = element_text(size = 14)
+    axis.text.x = element_text(size = 20),
+    axis.text.y = element_text(size = 20),
+    axis.title.y = element_text(size = 22),
+    legend.title = element_text(size = 18),
+    legend.text = element_text(size = 16)
+  ) +
+  guides(
+    pattern = guide_legend(
+      override.aes=list(
+        pattern=pattern_vals,
+        pattern_fill="black",
+        pattern_colour="black"
+      )
+    )
   )
 
-ggsave("variance_partitioning.png", 
-       width = 22.01,
-       height = 19.84,
+ggsave("variance_partitioning_legend.png", 
+       width = 18.4,
+       height = 15.17,
        units = "cm",
        dpi=300)
 
@@ -591,8 +602,10 @@ ggplot(variance_noPlant, aes(x = trait, y = perc_variance, pattern = source)) +
 
 # only keep trees that have values for all traits
 traits <- c("height", "RMF", "needle_mean", "slenderness")
-LP_pca_clean <- LP %>% 
+LP_pca_clean <- LP_noAlaska %>% 
   drop_na(all_of(traits))
+
+head(LP_pca_clean)
 
 pca_traits <- LP_pca_clean %>%
   select(
@@ -600,6 +613,8 @@ pca_traits <- LP_pca_clean %>%
     needle_mean,
     RMF,
     slenderness) 
+
+head(pca_traits)
 
 # construct PCA
 pca <- prcomp(pca_traits, scale.=TRUE)
@@ -617,18 +632,34 @@ ggplot(pca_df, aes(PC1, PC2, colour = cohort)) +
                geom="polygon",
                alpha=0.3,
                colour=NA) +
-  geom_point(data=centroids_cohort,
-             aes(PC1, PC2, colour = cohort),
-             shape = 4, size = 5, stroke = 3) +
   scale_fill_manual(values = cohort_colours) +     
   scale_colour_manual(values = cohort_colours) + 
   guides(fill="none") +
+  geom_point(data=centroids_cohort,
+             aes(PC1, PC2),
+             shape=4, size=5, stroke=3, colour="black") +
+  geom_point(data=centroids_cohort,
+             aes(PC1, PC2, colour = cohort),
+             shape = 4, size = 5, stroke = 2) +
   theme_minimal(base_size = 14) +
   labs(
     x = paste0("PC1 (", round(summary(pca)$importance[2,1] * 100, 1), "%)"),
     y = paste0("PC2 (", round(summary(pca)$importance[2,2] * 100, 1), "%)"),
     colour = "Cohort"
-    )
+    ) +
+  theme(
+    axis.text.x = element_text(size = 18),
+    axis.text.y = element_text(size = 18),
+    axis.title.y = element_text(size = 20),
+    legend.title = element_text(size = 16),
+    legend.text = element_text(size = 14)
+  )
+
+ggsave("PCA_cohort.png", 
+       width = 20.66,
+       height = 13.89,
+       units = "cm",
+       dpi=300)
 
 # cohhort centroids
 centroids_cohort <- pca_df %>% 
@@ -639,6 +670,50 @@ centroids_cohort <- pca_df %>%
     .groups="drop"
   )
 centroids_cohort
+
+
+# Statistical tests on centroids
+library(vegan)
+library(pairwiseAdonis)
+help(pairwise.adonis2)
+??pairwise.adonis2
+
+install.packages("adonis2")
+# unavailable for this version of R
+
+
+install.packages('devtools') # Assuming you don't have devtools package already
+library(devtools)
+library(devtools)
+install_github("pmartinezarbizu/pairwiseAdonis/pairwiseAdonis")
+
+library(pairwiseAdonis)
+
+# cohort
+adonis_result_cohort <- adonis2(
+  pca_traits ~cohort,
+  data=pca_df,
+  method="euclidian"
+)
+adonis_result_cohort
+
+# sig diff because of centroids or dispersion?
+dispersion_cohort <- betadisper(dist(pca_traits), pca_df$cohort)
+anova(dispersion_cohort)
+#' not sig -> cohorts don't differ because of dispersion
+
+# do trait combinations differ among cohorts?
+pairwise.adonis2(
+  pca_traits~cohort,
+  data=pca_df)
+
+
+
+# which traits contribute to PC1 and which ones to PC2?
+pca$rotation
+
+
+
 
 # Provenance
 ggplot(pca_df, aes(PC1, PC2, colour = provenance)) +
@@ -672,33 +747,6 @@ centroids_provenance <- pca_df %>%
 centroids_provenance
   
 
-# Statistical tests on centroids
-library(vegan)
-library(pairwiseAdonis)
-
-# cohort
-adonis_result_cohort <- adonis2(
-  pca_traits ~cohort,
-  data=pca_df,
-  method="euclidian"
-)
-adonis_result_cohort
-# sig diff because of centroids or dispersion?
-dispersion_cohort <- betadisper(dist(pca_traits), pca_df$cohort)
-anova(dispersion_cohort)
-  #' not sig -> cohorts don't differ because of dispersion
-
-# which cohorts differ
-pairwise.adonis2(
-  pca_traits~cohort,
-  data=pca_df
-)
-install.packages("pairwiseAdonis")
-# not available
-
-manova_res_cohort <- manova(as.matrix(pca$x) ~ pca_df$cohort)
-summary(manova_res_cohort, test="Pillai")
-
 # provenance
 adonis_result_provenance <- adonis2(
   pca_traits ~provenance,
@@ -709,11 +757,9 @@ adonis_result_provenance
 # sig diff because of centroids or dispersion?
 dispersion_provenance <- betadisper(dist(pca_traits), pca_df$provenance)
 anova(dispersion_provenance)
-  # dispersion not sig
+# dispersion not sig
 
-  
-# which traits contribute to PC1 and which ones to PC2?
-pca$rotation
+
 
 # Kit's PCA ---------------------------------------------------------------------
 
