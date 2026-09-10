@@ -293,8 +293,8 @@ mod_slenderness_noAlaska <- aov(slenderness~cohort, data = LP_noAlaska)
 
 plot(mod_slenderness_noAlaska)
 
-summary(mod_slenderness_noAlaska)
-emmeans(mod_slenderness_noAlaska, pairwise ~ cohort, adjust="tukey")
+summary(mod_height_noAlaska)
+emmeans(mod_height_noAlaska, pairwise ~ cohort, adjust="tukey")
 
 # 2. Correlations between traits ------------------------------------------
 
