@@ -19,11 +19,13 @@ library(ggrepel)
 
 # Import & clean data -----------------------------------------------------
 
-setwd("C:/Users/luidnn/OneDrive - UKCEH/Documents/R projects/RapidAdaptation")
+setwd("C:/Users/luidnn/OneDrive - UKCEH/05 - Project analysis/RapidAdaptation")
 
-data <- read_excel("P:/07793_newLEAF/Workfiles/WP4/RapidAdaptationTrial_MasterSheet.xlsx", sheet = "Pinus contorta")
-minitab_noPlantation_data <- read_excel("C:/Users/luidnn/OneDrive - UKCEH/Documents/R projects/RapidAdaptation/RapidAdaptation_minitab_LP.xlsx", sheet="noPlantation_clean")
-minitab_noAlaska_data <- read_excel("C:/Users/luidnn/OneDrive - UKCEH/Documents/R projects/RapidAdaptation/RapidAdaptation_minitab_LP.xlsx", sheet="noAlaska_clean")
+data <- read_excel("P:/07793_newLEAF/Workfiles/WP4/Rapid_Adaptation/Data/Raw/Phenotyping/RapidAdaptationTrial_MasterSheet.xlsx", sheet = "Pinus contorta")
+
+# "P:/07793_newLEAF/Workfiles/WP4/Rapid Adaptation/Data/Raw/Phenotyping/RapidAdaptationTrial_MasterSheet.xlsx"
+minitab_noPlantation_data <- read_excel("C:/Users/luidnn/OneDrive - UKCEH/05 - Project analysis/RapidAdaptation/RapidAdaptation_minitab_LP.xlsx", sheet="noPlantation_clean")
+minitab_noAlaska_data <- read_excel("C:/Users/luidnn/OneDrive - UKCEH/05 - Project analysis/RapidAdaptation/RapidAdaptation_minitab_LP.xlsx", sheet="noAlaska_clean")
 
 head(minitab_noPlantation_data)
 head(minitab_noAlaska_data)
@@ -138,13 +140,15 @@ LP <- LP_all %>%
   filter(!(ID %in% c("1-58", "7-70")))
 
 
+# Data subsets ------------------------------------------------------------
+
 # no Plantation
 LP_noPlant <- droplevels(subset(LP, cohort != "Plantation"))
 
 # no Alaska
 LP_noAlaska <- droplevels(subset(LP, provenance != "Alaska"))
 
-# colour sets -------------------------------------------------------------
+# colour sets & figure size -------------------------------------------------------------
 
 cohort_colours <- c(
   "Origin" = "#F08080",
@@ -157,6 +161,19 @@ provenance_colours <- c(
   "North Coast" = "#66CD00",
   "Skeena River" = "#6495ED"
 )
+
+theme_set(
+  theme_bw(base_size = 11) +
+    theme(
+      axis.title = element_text(size = 10),
+      axis.text = element_text(size = 9),
+      strip.text = element_text(size = 11),
+      legend.title = element_text(size = 10),
+      legend.text = element_text(size = 9)
+    )
+)
+
+
 
 # Provenance & cohort distribution ----------------------------------------
 
@@ -176,6 +193,18 @@ ggplot(LP_all, aes(x=cohort, fill = provenance)) +
   scale_fill_manual(values=provenance_colours) +
   theme_minimal()
 
+# originally planted - cohorts only
+ggplot(LP_all, aes(x=cohort, fill=cohort)) +
+  geom_bar(position="dodge") +
+  scale_fill_manual(values=cohort_colours) +
+  theme_minimal() +
+  theme(legend.position="none")
+
+
+# Survival ----------------------------------------------------------------
+
+# compare length of survival, difference between cohorts between status_1 & status_2?
+
 # proportion alive
 prop_alive <- LP_all %>% 
   group_by(cohort) %>% 
@@ -186,6 +215,30 @@ prop_alive <- LP_all %>%
     .groups ="drop"
   )
 
+# statistical difference between cohorts?
+LP_all <- LP_all |> 
+  mutate(alive = ifelse(status_2=="alive",1,0))
+
+surv_mod <- glm(
+  alive ~ cohort,
+  data=LP_all,
+  family=binomial
+)
+# effects other than cohort?
+
+# glmer because not entirely independent observations
+glmer(alive~cohort + (1|Block),
+      data=LP_all, 
+      family=binomial)
+
+anova(surv_mod, test="Chisq")
+# p value ***
+emmeans(surv_mod, pairwise~cohort, type="response")
+# origin - regen ** 
+# origin - plantation 0.04
+# plant - regen not sig
+
+
 ggplot(prop_alive, aes(y=perc_alive, x = cohort, fill=cohort)) +
   geom_col(position="dodge") +
   theme_minimal() +
@@ -194,28 +247,54 @@ ggplot(prop_alive, aes(y=perc_alive, x = cohort, fill=cohort)) +
     y = "Percentage alive",
     x=NULL) +
   scale_y_continuous(limits=c(0,100)) +
-  theme(legend.position="none",
-        axis.title.y = element_text(size = 18),
-        axis.text.x  = element_text(size = 14),
-        axis.text.y  = element_text(size = 14)
-  )
+  theme(legend.position="none")
+ # theme(legend.position="none",
+  #       axis.title.y = element_text(size = 18),
+  #       axis.text.x  = element_text(size = 11),
+  #       axis.text.y  = element_text(size = 11)
+  # )
 
-ggsave("Perc_alive.png", dpi=300)
+ggsave("Perc_alive.png",
+       width = 140,
+       height = 120,
+       units = "mm",
+       dpi=300)
 
 # 1a Trait distributions ------------------------------------------------------
 
-LP_noPlant <- droplevels(subset(LP, cohort != "Plantation"))
-ggplot(LP_noPlant, aes(x = slenderness, fill = provenance, color=provenance)) +
-  geom_density(alpha=0.5) +
-  theme_minimal() +
-  theme(
-    legend.position = c(0.95,1),
-    legend.justification = c("right", "top")
-  ) +
-  scale_fill_manual(values=provenance_colours) +
-  scale_color_manual(values=provenance_colours)
+# include: growth increment, growth rate (max slope of growth curve model in mm / day), 
 
-LP_noAlaska <- droplevels(subset(LP, provenance != "Alaska"))
+LP_long <- LP_noAlaska %>%
+  pivot_longer(
+    cols = c(height,
+             diameter,
+             needle_mean,
+             total_dry_mass,
+             RMF,
+             shootroot,
+             slenderness),
+    names_to = "trait",
+    values_to = "value"
+  ) |> 
+  mutate(
+    cohort=as.factor(cohort),
+    provenance = as.factor(provenance),
+    trait = as.factor(trait)
+  )
+
+# facet plot all trait value distributions
+ggplot(LP_long, aes(x = value, color=cohort, fill=cohort)) +
+  geom_density(alpha=0.5) +
+  facet_wrap(~trait, scales = "free") +
+  theme_minimal() +
+  theme(legend.position = c(0.5,0.3),
+        legend.justification = c("right", "top")
+  ) +
+  scale_fill_manual(values=cohort_colours) +
+  scale_color_manual(values=cohort_colours)
+
+
+# individual trait value distribution
 ggplot(LP_noAlaska, aes(x = slenderness, color = cohort, fill = cohort)) +
   geom_density(alpha = 0.5) +
   theme_minimal() +
@@ -226,19 +305,20 @@ ggplot(LP_noAlaska, aes(x = slenderness, color = cohort, fill = cohort)) +
   scale_fill_manual(values=cohort_colours) +
   scale_color_manual(values=cohort_colours)
 
-# 1b Trait boxplots by cohort and provenance ---------------------------------
+# 1b Trait boxplots by cohort ---------------------------------
 
 LP_long <- LP_noAlaska %>%
-  select(ID, provenance, cohort, height, RMF, slenderness, needle_mean) %>%
   pivot_longer(
-    cols = c(height, RMF, slenderness, needle_mean),
+    cols = c(height,
+             needle_mean,
+             total_dry_mass,
+             RMF,
+             slenderness),
     names_to = "trait",
     values_to = "value"
-  )
-
-LP_long <- LP_long %>%
+  ) |> 
   mutate(
-    cohort = as.factor(cohort),
+    cohort=as.factor(cohort),
     provenance = as.factor(provenance),
     trait = as.factor(trait)
   )
@@ -249,6 +329,7 @@ ggplot(LP_long, aes(x = cohort, y = value, fill=cohort)) +
              labeller=labeller(trait=c(
                height="Height (cm)",
                needle_mean="Mean needle length (mm)",
+               total_dry_mass="Total dry mass (g)",
                RMF="Root mass fraction",
                slenderness="Slenderness"
              ))) +
@@ -256,11 +337,14 @@ ggplot(LP_long, aes(x = cohort, y = value, fill=cohort)) +
   theme_minimal() +
   theme(
         strip.text = element_text(face = "bold", size = 20),
-        legend.position="none",
-        axis.text.x = element_text(, size =18, hjust = 1),
+        legend.position=c(0.85, 0.2),
+        legend.title=element_text(size=15),
+        legend.text=element_text(size=14),
+        axis.text.x = element_text(size =18, hjust = 1),
         axis.text.y  = element_text(size = 18),
         axis.title.y=element_text(size=20, vjust = 2)) +
-  scale_fill_manual(values=cohort_colours) +
+  scale_fill_manual(name="Cohort",
+                    values=cohort_colours) +
   scale_y_continuous(limits = c(0, NA)) +
   labs(y="Trait value",
        x=NULL) +
@@ -276,6 +360,7 @@ ggsave("trait_boxplots.png",
        units = "cm",
        dpi=300)
 
+# How are trait values explained by cohort?
 # anova 
 # no Plantation
 mod_height_noPlant <- aov(height~cohort*provenance, data = LP_noPlant)
@@ -296,6 +381,36 @@ plot(mod_slenderness_noAlaska)
 summary(mod_height_noAlaska)
 emmeans(mod_height_noAlaska, pairwise ~ cohort, adjust="tukey")
 
+
+# total dry mass
+ggplot(LP_noAlaska, aes(x = cohort, y = total_dry_mass, fill=cohort)) +
+  geom_boxplot() +
+  theme_minimal() +
+  scale_fill_manual(values=cohort_colours) +
+  labs(y="Total dry mass (g)",
+       x=NULL) +
+  theme(legend.position="none",
+        axis.text.x = element_text(, size =18),
+        axis.text.y  = element_text(size = 18),
+        axis.title.y=element_text(size=20, vjust = 1.7)) 
+
+ggsave("biomass_boxplots.png", 
+       width = 19.91,
+       height = 14.68,
+       units = "cm",
+       dpi=300)
+  
+
+# significantly different?
+mod_biomass_noAlaska <- aov(total_dry_mass~cohort, data = LP_noAlaska)
+plot(mod_biomass_noAlaska)
+summary(mod_biomass_noAlaska) # highly sig
+emmeans(mod_biomass_noAlaska, pairwise ~ cohort, adjust="tukey")
+  #' O - P: not sig
+  #' O - R < 0.0001
+  #' P - R < 0.0001
+
+
 # 2. Correlations between traits ------------------------------------------
 
 traits_noPlant <- LP_noPlant %>%
@@ -308,15 +423,8 @@ traits_noPlant <- LP_noPlant %>%
          shootroot,
          slenderness)
 
-traits_noAlaska <- LP_noAlaska %>%
-  select(
-         height,
-         diameter,
-         needle_mean,
-         total_dry_mass,
-         RMF,
-         shootroot,
-         slenderness)
+# budset & budburst?
+
 
 # to make line red
 my_smooth <- function(data, mapping, ...) {
@@ -336,7 +444,7 @@ ggpairs(traits_noPlant,
         )
 
 # simpler plot
-cor_mat <- cor(traits_noAlaska, method ="pearson",
+cor_mat <- cor(traits_noPlant, method ="pearson",
                use="pairwise.complete.obs")
 ggcorrplot(cor_mat,
            lab = TRUE,
@@ -521,18 +629,12 @@ pattern_vals <- c(
 # patterned stacked barplot
 ggplot(variance_noAlaska,
        aes(x = trait, y = perc_variance,
-           fill = source, pattern = source)) +
-  geom_col_pattern(
+           fill = source)) +
+  geom_col(
     colour = "black",
-    linewidth = 0.5,
-    pattern_fill = "black",
-    pattern_colour = "black",
-    pattern_density = 0.1,
-    pattern_spacing = 0.02
+    linewidth = 0.5
   ) +
   scale_fill_manual(values = cols, name = "Source", labels = source_labels) +
-  scale_pattern_manual(values = pattern_vals, name = "Source", labels = source_labels) +
-  guides(pattern = "none") +
   scale_x_discrete(labels = c(
     "height" = "Height",
     "needle" = "Needle length",
@@ -546,17 +648,10 @@ ggplot(variance_noAlaska,
     axis.text.y = element_text(size = 20),
     axis.title.y = element_text(size = 22),
     legend.title = element_text(size = 18),
-    legend.text = element_text(size = 16)
-  ) +
-  guides(
-    pattern = guide_legend(
-      override.aes=list(
-        pattern=pattern_vals,
-        pattern_fill="black",
-        pattern_colour="black"
-      )
-    )
+    legend.text = element_text(size = 16),
+    legend.position="None"
   )
+
 
 ggsave("variance_partitioning_legend.png", 
        width = 18.4,
@@ -565,6 +660,46 @@ ggsave("variance_partitioning_legend.png",
        dpi=300)
 
 
+
+# coloured & patterned stacked plot
+# ggplot(variance_noAlaska,
+#        aes(x = trait, y = perc_variance,
+#            fill = source, pattern = source)) +
+#   geom_col_pattern(
+#     colour = "black",
+#     linewidth = 0.5,
+#     pattern_fill = "black",
+#     pattern_colour = "black",
+#     pattern_density = 0.1,
+#     pattern_spacing = 0.02
+#   ) +
+#   scale_fill_manual(values = cols, name = "Source", labels = source_labels) +
+#   scale_pattern_manual(values = pattern_vals, name = "Source", labels = source_labels) +
+#   guides(pattern = "none") +
+#   scale_x_discrete(labels = c(
+#     "height" = "Height",
+#     "needle" = "Needle length",
+#     "RMF" = "RMF",
+#     "slenderness" = "Slenderness"
+#   )) +
+#   labs(y = "Percent variance", x = NULL) +
+#   theme_minimal() +
+#   theme(
+#     axis.text.x = element_text(size = 20),
+#     axis.text.y = element_text(size = 20),
+#     axis.title.y = element_text(size = 22),
+#     legend.title = element_text(size = 18),
+#     legend.text = element_text(size = 16)
+#   ) +
+#   guides(
+#     pattern = guide_legend(
+#       override.aes=list(
+#         pattern=pattern_vals,
+#         pattern_fill="black",
+#         pattern_colour="black"
+#       )
+#     )
+#   )
 
 
 
@@ -619,6 +754,8 @@ head(pca_traits)
 # construct PCA
 pca <- prcomp(pca_traits, scale.=TRUE)
 summary(pca)
+
+help(prcomp)
 
 pca_df <- as.data.frame(pca$x) %>% 
   mutate(cohort=LP_pca_clean$cohort,
@@ -696,6 +833,7 @@ adonis_result_cohort <- adonis2(
   method="euclidian"
 )
 adonis_result_cohort
+# significant
 
 # sig diff because of centroids or dispersion?
 dispersion_cohort <- betadisper(dist(pca_traits), pca_df$cohort)
@@ -711,6 +849,12 @@ pairwise.adonis2(
 
 # which traits contribute to PC1 and which ones to PC2?
 pca$rotation
+
+# Are trait spaces sig different size?
+#' multivariate dispersion (PERMDISP)
+#' convex hull volume
+#' hypervolume analysis
+#' determinant of covariance matrix
 
 
 

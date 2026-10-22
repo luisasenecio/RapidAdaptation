@@ -1,0 +1,294 @@
+---
+title: "RapidAdaptation_LP_results"
+author: "Luisa Dickenmann"
+date: "2026-10-22"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(dplyr)
+library(ggplot2)
+library(tidyverse)
+library(readxl)
+library(ggpattern)
+library(ggrepel)
+library(corrplot)
+library(ggcorrplot)
+
+knitr::opts_chunk$set(
+  echo=FALSE,
+  warning = FALSE,
+  message = FALSE
+)
+
+# Import data:
+data <- read_excel("P:/07793_newLEAF/Workfiles/WP4/Rapid_Adaptation/Data/Raw/Phenotyping/RapidAdaptationTrial_MasterSheet.xlsx", sheet = "Pinus contorta")
+minitab_noPlantation_data <- read_excel("C:/Users/luidnn/OneDrive - UKCEH/05 - Project analysis/RapidAdaptation/RapidAdaptation_minitab_LP.xlsx", sheet="noPlantation_clean")
+minitab_noAlaska_data <- read_excel("C:/Users/luidnn/OneDrive - UKCEH/05 - Project analysis/RapidAdaptation/RapidAdaptation_minitab_LP.xlsx", sheet="noAlaska_clean")
+
+LP_all <- data %>% 
+  rename(
+    "status_1" = "Status",
+    "date_budset" = "Date of budset",
+    "date_budburst" = "Date of budburst",
+    "DBB_1" = "DBB (mm)...13",
+    "height_1" = "Adjusted Height (mm)",
+    "needle_1" = "Needle length 1 (mm)",
+    "needle_2" = "Needle length 2 (mm)",
+    "date_1" = "Date",
+    "status_2" = "Status 22/09/2025",
+    "diameter" = "DBB (mm)...25",
+    "date_diameter" = "Date measured DBB",
+    "height" = "Height (cm)...27",
+    "date_height" = "Date measured",
+    "cohort" = Type,
+    "provenance" = Provenance,
+    "Bioassay_0" = "Bioassay leaf weight_2",
+    "dry_mass" = "Dry mass (g)",
+    "root_mass" = "Root dry mass (g)",
+    "shootroot" = "Shoot-to-root ratio (S:R)",
+    "total_dry_mass" = "Total dry mass (g)",
+    "RMF" = "Root mass fraction (RMF)"
+  )  %>% 
+  mutate(
+    height = as.numeric(height),
+    diameter = as.numeric(diameter),
+    slenderness = height / diameter
+  ) %>% 
+  select(-c(`Height (cm)...14`, `Needle length 1 (cm)`, `Needle length 2 (cm)`, 
+            Ruler, Offset, Size,`Bioassay leaf weight`, `Dry mass > root mass?`)) %>% 
+  mutate(across(c(DBB_1, height_1, needle_1, needle_2, height, diameter),as.numeric)) %>% 
+  mutate(needle_mean = rowMeans(cbind(needle_1, needle_2), 
+                                na.rm = TRUE)) %>% 
+  mutate(ID = paste(Block, Position, sep="-")) %>% 
+  relocate(ID, .before=1) %>% 
+  mutate(Family = ifelse(Family == "sub for LPNC - UKA4 - actually LPNC - UKA1",
+                         "LPNC - UKA1",
+                         Family))
+
+# cohort colours
+
+cohort_colours <- c(
+  "Origin" = "#F08080",
+  "Plantation" = "#528B8B",
+  "Regeneration" = "#EEC900"
+)
+
+provenance_colours <- c(
+  "Alaska" = "#EE6363",
+  "North Coast" = "#66CD00",
+  "Skeena River" = "#6495ED"
+)
+
+# Data subsets
+
+#' remove all dead trees
+#' remove odd trees (taproot, shootroot extreme): 1-58, 7-70
+LP <- LP_all %>% 
+  subset(status_2 == "alive") %>% 
+  filter(!(ID %in% c("1-58", "7-70")))
+
+# no Plantation
+LP_noPlant <- droplevels(subset(LP, cohort != "Plantation"))
+
+# no Alaska
+LP_noAlaska <- droplevels(subset(LP, provenance != "Alaska"))
+
+LP_long <- LP_noAlaska %>%
+  pivot_longer(
+    cols = c(height,
+             diameter,
+             needle_mean,
+             total_dry_mass,
+             RMF,
+             shootroot,
+             slenderness),
+    names_to = "trait",
+    values_to = "value"
+  ) |> 
+  mutate(
+    cohort=as.factor(cohort),
+    provenance = as.factor(provenance),
+    trait = as.factor(trait)
+  )
+
+```
+
+## Survival
+Of the originally planted trees, only 56.6% of the Origin trees survived, while 67.7% of the Plantation and 73% of the Regeneration trees survived (Figure 2).Survival differed significantly among generations (binomial GLM, likelihood ratio test: X^2 = 18.2, p < 0.001) Estimated marginal mean survival probabilities varied among generations. Survival was significantly lower in Origin trees than in Origin trees (p < 0.001) and to a lesser extent Plantation trees (p = 0.04), whereas the difference between Plantation and Regeneration was not significant (p = 0.4). 
+
+
+``` {r, fig.cap="**Figure 2** Survival (%) of trees in each cohort. Bars represent the proportion of trees at the end of growing season three recorded as alive."}
+prop_alive <- LP_all %>% 
+  group_by(cohort) %>% 
+  summarise(
+    total = n(),
+    alive = sum(status_2 == "alive"),
+    perc_alive = alive / total *100,
+    .groups ="drop"
+  )
+
+ggplot(prop_alive, aes(y=perc_alive, x = cohort, fill=cohort)) +
+  geom_col(position="dodge") +
+  theme_minimal() +
+  scale_fill_manual(values=cohort_colours) +
+  labs(
+    y = "Percentage alive",
+    x=NULL) +
+  scale_y_continuous(limits=c(0,100)) +
+  theme(legend.position="none")
+```
+
+# Influence of cohort on trait values
+
+If traits had a correlation index greater than 0.6, the more unique and biologically significant trait was retained for subsequent analyses (Appendix 2). As RMF and shoot-to-root ratio are the inverse of each other and therefore highly correlated (|r| = 0.96), only RMF was kept as it gives more insight into below-ground allocation. Similarly, height was favoured over diameter (|r| = 0.79) to express potential competitive advantages more directly. 
+
+```{r, fig.width=12, fig.height=10, fig.cap="**Figure 2** Measured trait values between cohorts. Note different scales. "}
+
+LP_long <- LP_noAlaska %>%
+  pivot_longer(
+    cols = c(height,
+             needle_mean,
+             total_dry_mass,
+             RMF,
+             slenderness),
+    names_to = "trait",
+    values_to = "value"
+  ) |> 
+  mutate(
+    cohort=as.factor(cohort),
+    provenance = as.factor(provenance),
+    trait = as.factor(trait))
+
+ggplot(LP_long, aes(x = cohort, y = value, fill=cohort)) +
+  geom_boxplot(position = position_dodge(width = 0.8)) +
+  facet_wrap(~ trait, scales = "free_y",
+             labeller=labeller(trait=c(
+               height="Height (cm)",
+               needle_mean="Mean needle length (mm)",
+               total_dry_mass="Total dry mass (g)",
+               RMF="Root mass fraction",
+               slenderness="Slenderness"
+             ))) +
+  scale_fill_grey(start = 0.2, end = 0.8) +
+  theme_minimal() +
+  theme(
+        strip.text = element_text(face = "bold", size = 20),
+        legend.position=c(0.85, 0.2),
+        legend.title=element_text(size=18),
+        legend.text=element_text(size=16),
+        axis.text.x = element_text(size =18, hjust = 1),
+        axis.text.y  = element_text(size = 18),
+        axis.title.y=element_text(size=20, vjust = 2)) +
+  scale_fill_manual(name="Cohort",
+                    values=cohort_colours) +
+  scale_y_continuous(limits = c(0, NA)) +
+  labs(y="Trait value",
+       x=NULL) +
+  scale_x_discrete(labels=c(
+    "Origin"="O",
+    "Plantation"="P",
+    "Regeneration"="R"
+  ))
+```
+
+
+
+
+
+
+
+# Appendix
+
+## Trait distributions
+
+```{r, fig.width=12, fig.height=10, fig.cap="Trait value distribution of directly measured and derived traits"}
+
+LP_long <- LP_noAlaska %>%
+  pivot_longer(
+    cols = c(height,
+             diameter,
+             needle_mean,
+             total_dry_mass,
+             RMF,
+             shootroot,
+             slenderness),
+    names_to = "trait",
+    values_to = "value"
+  ) |> 
+  mutate(
+    cohort=as.factor(cohort),
+    provenance = as.factor(provenance),
+    trait = as.factor(trait)
+  )
+
+# facet plot all trait value distributions
+ggplot(LP_long, aes(x = value, color=cohort, fill=cohort)) +
+  geom_density(alpha=0.5, na.rm=TRUE) +
+  facet_wrap(~trait, scales = "free") +
+  theme_minimal() +
+  theme(strip.text = element_text(face = "bold", size = 20),
+        legend.position=c(0.5, 0.1),
+        legend.title=element_text(size=15),
+        legend.text=element_text(size=14),
+        axis.text.x = element_text(size =18, hjust = 1),
+        axis.text.y  = element_text(size = 18),
+        axis.title.y=element_text(size=20, vjust = 2)) +
+  scale_fill_manual(values=cohort_colours) +
+  scale_color_manual(values=cohort_colours)
+
+```
+
+
+## Trait correlations
+
+Appendix 2 shows a colour-coded correlation matrix (blue: negative correlation, red: positive correlation, stronger colour indicated stronger relationship between trait values).
+
+``` {r}
+traits_noPlant <- LP_noPlant %>%
+  select(
+         height,
+         diameter,
+         needle_mean,
+         total_dry_mass,
+         RMF,
+         shootroot,
+         slenderness)
+
+cor_mat <- cor(traits_noPlant, method ="pearson",
+               use="pairwise.complete.obs")
+ggcorrplot(cor_mat,
+           lab = TRUE,
+           lab_size = 5,
+           type = "lower") +
+  scale_fill_gradient2(
+    name="Correlation",
+    low="#1874CD",
+    mid="white",
+    high = "#CD3700",
+    midpoint = 0,
+    limits = c(-1,1)
+  ) +
+  scale_x_discrete(labels=c(
+    shootroot="shoot:root",
+    total_dry_mass="Total dry mass",
+    needle_mean="Mean needle length",
+    diameter="Diameter",
+    height="Height",
+    slenderness="Slenderness"
+  )) +
+  scale_y_discrete(labels=c(
+    shootroot="shoot:root",
+    total_dry_mass="Total dry mass",
+    needle_mean="Mean needle length",
+    diameter="Diameter",
+    height="Height"
+      )) +
+  theme(axis.text.x = element_text(, size =14),
+        axis.text.y  = element_text(size = 14),
+        legend.title=element_text(margin=margin(b=10)))
+
+```
+
+
+
