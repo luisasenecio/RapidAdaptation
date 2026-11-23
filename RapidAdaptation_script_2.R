@@ -173,8 +173,6 @@ theme_set(
     )
 )
 
-
-
 # Provenance & cohort distribution ----------------------------------------
 
 ggplot(LP_noAlaska, aes(x=provenance, fill = cohort)) +
@@ -199,6 +197,58 @@ ggplot(LP_all, aes(x=cohort, fill=cohort)) +
   scale_fill_manual(values=cohort_colours) +
   theme_minimal() +
   theme(legend.position="none")
+
+# Germination rates --------------------------------------------------------
+
+germination <- read_excel("P:/07793_newLEAF/Juan Pablo/newLEAF/WP4 - Glasshouse trial & seedlots/Glasshouse trial/LPWHgermination.xlsx", sheet = "Germination")
+head(germination)
+
+# add cohort data
+germination <- germination |> 
+  rename(Family = 'Family ID',
+         Germination_rate = 'Germination %') |> 
+  filter(Species!="Western Hemlock")
+
+cohort_lookup <- LP %>%
+  select(Family, cohort) %>%
+  distinct()
+
+germination <- germination |> 
+  left_join(cohort_lookup |> select(Family, cohort),
+            by="Family")
+
+fam_germ <- sort(unique(germination$Family))
+fam_LP <- sort(unique(LP$Family))
+
+comparison <- data.frame(
+  Family_germ = c(fam_germ, rep(NA, max(0, length(fam_LP) - length(fam_germ)))),
+  Family_LP   = c(fam_LP, rep(NA, max(0, length(fam_germ) - length(fam_LP))))
+)
+
+View(comparison)
+
+germination <- germination |> 
+  filter(!is.na(cohort))
+
+ggplot(germination, aes(x=cohort, 
+                        y=Germination_rate,
+                        fill=cohort)) +
+  stat_summary(fun=mean, geom="bar") +
+  stat_summary(fun.data=mean_se, geom="errorbar", width=0.2) +
+  facet_wrap(~Provenance) +
+  theme_bw() +
+  scale_fill_discrete(name="Cohort") +
+  scale_fill_manual(
+    values = cohort_colors) +
+  labs(x=NULL, y = "Mean germination success (%)")
+
+ggsave("Germination_rates.png")
+
+g# average seed mass
+ggplot(germination, aes(x=cohort, 
+                        y=))
+
+
 
 
 # Survival ----------------------------------------------------------------
