@@ -2,7 +2,9 @@
 title: "RapidAdaptation_LP_results"
 author: "Luisa Dickenmann"
 date: "2026-10-22"
-output: html_document
+output:
+  word_document: default
+  html_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -14,8 +16,11 @@ library(ggpattern)
 library(ggrepel)
 library(corrplot)
 library(ggcorrplot)
+library(lme4)
 
 knitr::opts_chunk$set(
+  fig.width=12,
+  fig=height=6,
   echo=FALSE,
   warning = FALSE,
   message = FALSE
@@ -114,6 +119,11 @@ LP_long <- LP_noAlaska %>%
 
 ```
 
+## Trait correlations
+
+Strong correlations were observed between diameter and height (r = 0.79), between diameter and total dry mass (r = 0.86), between  height and total dry mass, and between RMF and shoot to root ratio (r = -0.96, Appendix 2). Height was retained to express potential competitive advantages more directly. Diameter was therefore consolidated into the derived slenderness trait and total dry mass was integrated into Root Mass Fraction. RMF was favoured over shoot-to-root ratio as it gives more insight into belowground allocation of energy. Subsequent analyses focus on height, mean needle length, RMF and slenderness.
+
+
 ## Survival
 Of the originally planted trees, only 56.6% of the Origin trees survived, while 67.7% of the Plantation and 73% of the Regeneration trees survived (Figure 2).Survival differed significantly among generations (binomial GLM, likelihood ratio test: X^2 = 18.2, p < 0.001) Estimated marginal mean survival probabilities varied among generations. Survival was significantly lower in Origin trees than in Origin trees (p < 0.001) and to a lesser extent Plantation trees (p = 0.04), whereas the difference between Plantation and Regeneration was not significant (p = 0.4). 
 
@@ -141,7 +151,9 @@ ggplot(prop_alive, aes(y=perc_alive, x = cohort, fill=cohort)) +
 
 # Influence of cohort on trait values
 
-If traits had a correlation index greater than 0.6, the more unique and biologically significant trait was retained for subsequent analyses (Appendix 2). As RMF and shoot-to-root ratio are the inverse of each other and therefore highly correlated (|r| = 0.96), only RMF was kept as it gives more insight into below-ground allocation. Similarly, height was favoured over diameter (|r| = 0.79) to express potential competitive advantages more directly. 
+Trait distributions differs among the three cohorts of *Pinus contorta* when grown in common environmental conditions (Figure 2). Variation is evident across all measured and derived traits, although the magnitude varies among traits. Trees from the Origin cohort tend to express the lowest values of a given trait, while Regeneration trees express the highest values. Plantation trees' values are usually intermediate or on par with those of Regeneration trees. Root Mass Fraction is an exception insofar as the trait values do not differ significantly between cohorts. Similarly, slenderness does not differ between Plantation and Regeneration. In total dry mass a large difference is observed between the trait values of Origin and Plantation and the consistently much higher values of Regeneration. A more gradual increase in overall trait values is observed in height and mean needle length.
+(Add in how large differences are quantitatively)
+
 
 ```{r, fig.width=12, fig.height=10, fig.cap="**Figure 2** Measured trait values between cohorts. Note different scales. "}
 
@@ -190,6 +202,162 @@ ggplot(LP_long, aes(x = cohort, y = value, fill=cohort)) +
     "Plantation"="P",
     "Regeneration"="R"
   ))
+```
+
+## Variance partitioning
+
+```{r}
+
+LP_noAlaska <- LP_noAlaska |> 
+  mutate(
+    Block=factor(Block),
+    cohort=factor(cohort),
+    provenance=factor(provenance)
+  )
+
+traits_var_part <- c(
+  "height", "needle_mean", "total_dry_mass", "RMF", "slenderness"
+)
+
+traits_varprop <- c(
+  "height",
+  "needle_mean",
+  "total_dry_mass",
+  "RMF",
+  "slenderness"
+)
+
+get_varprop <- function(trait, data){
+  
+  form <- as.formula(
+    paste0(
+      trait,
+      " ~ 1 + (1|Block) + (1|cohort) + (1|provenance) + (1|cohort:provenance)"
+    )
+  )
+  
+  mod <- lmer(form, data = data)
+  
+  vc <- as.data.frame(VarCorr(mod))
+  
+  total_var <- sum(vc$vcov)
+  
+  vc %>%
+    select(grp, vcov) %>%
+    mutate(
+      trait = trait,
+      proportion = vcov / total_var,
+      percent = proportion * 100
+    )
+}
+
+var_props <- map_dfr(traits_varprop, get_varprop, data = LP_noAlaska)
+
+# Stacked plot
+
+ggplot(var_props,
+       aes(x = trait,
+           y = proportion,
+           fill = grp)) +
+  geom_col(
+    colour = "black",
+    linewidth = 0.5) +
+  scale_x_discrete(
+    labels=c(
+      "height" = "Height",
+      "needle_mean" = "Mean needle length",
+      "RMF" = "RMF",
+      "slenderness" = "Slenderness",
+      "total_dry_mass" = "Total dry mass"
+    )
+  ) +
+  scale_fill_manual(
+    values=c(
+      "cohort"="#6E8B3D",
+      "provenance" = "#CD2626",
+      "cohort:provenance" = "#FFC125",
+      "Block" = "#1C86EE",
+      "Residual" = "#C4C4C4"
+    )
+  ) + 
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    x = "Trait",
+    y = "Proportion of total variance",
+    fill = "Variance source"
+  ) +
+  theme_bw()
+
+
+```
+
+## Principal Component Analysis
+
+
+
+```{r, fig.cap="**Figure 4** Principal Component Analysis on selected traits."}
+
+
+# only keep trees that have values for all traits
+traits <- c("height", "RMF", "total_dry_mass", "needle_mean", "slenderness")
+LP_pca_clean <- LP_noAlaska %>% 
+  drop_na(all_of(traits))
+
+pca_traits <- LP_pca_clean %>%
+  select(
+    height,
+    needle_mean,
+    RMF,
+    total_dry_mass,
+    slenderness) 
+
+# construct PCA
+pca <- prcomp(pca_traits, scale.=TRUE)
+#summary(pca)
+
+pca_df <- as.data.frame(pca$x) %>% 
+  mutate(cohort=LP_pca_clean$cohort,
+         provenance=LP_pca_clean$provenance)
+
+centroids_cohort <- pca_df %>% 
+  group_by(cohort) %>% 
+  summarise(
+    PC1=mean(PC1),
+    PC2=mean(PC2),
+    .groups="drop"
+  )
+
+# Cohort
+ggplot(pca_df, aes(PC1, PC2, colour = cohort)) +
+  geom_point(size = 3, alpha = 0.8) +
+  stat_ellipse(aes(group=cohort, fill=cohort), 
+               linewidth=0.1,
+               geom="polygon",
+               alpha=0.3,
+               colour=NA) +
+  scale_fill_manual(values = cohort_colours) +     
+  scale_colour_manual(values = cohort_colours) + 
+  guides(fill="none") +
+  geom_point(data=centroids_cohort,
+             aes(PC1, PC2),
+             shape=4, size=5, stroke=3, colour="black") +
+  geom_point(data=centroids_cohort,
+             aes(PC1, PC2, colour = cohort),
+             shape = 4, size = 5, stroke = 2) +
+  theme_minimal(base_size = 14) +
+  labs(
+    x = paste0("PC1 (", round(summary(pca)$importance[2,1] * 100, 1), "%)"),
+    y = paste0("PC2 (", round(summary(pca)$importance[2,2] * 100, 1), "%)"),
+    colour = "Cohort"
+    ) +
+  theme(
+    axis.text.x = element_text(size = 18),
+    axis.text.y = element_text(size = 18),
+    axis.title.y = element_text(size = 20),
+    legend.title = element_text(size = 16),
+    legend.text = element_text(size = 14)
+  )
+
 ```
 
 
@@ -241,6 +409,7 @@ ggplot(LP_long, aes(x = value, color=cohort, fill=cohort)) +
 
 
 ## Trait correlations
+ 
 
 Appendix 2 shows a colour-coded correlation matrix (blue: negative correlation, red: positive correlation, stronger colour indicated stronger relationship between trait values).
 

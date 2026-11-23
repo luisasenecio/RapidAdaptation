@@ -443,6 +443,7 @@ ggpairs(traits_noPlant,
           )
         )
 
+help(cor)
 # simpler plot
 cor_mat <- cor(traits_noPlant, method ="pearson",
                use="pairwise.complete.obs")
@@ -648,8 +649,7 @@ ggplot(variance_noAlaska,
     axis.text.y = element_text(size = 20),
     axis.title.y = element_text(size = 22),
     legend.title = element_text(size = 18),
-    legend.text = element_text(size = 16),
-    legend.position="None"
+    legend.text = element_text(size = 16)
   )
 
 
@@ -659,6 +659,108 @@ ggsave("variance_partitioning_legend.png",
        units = "cm",
        dpi=300)
 
+## Variance partitioning in R with all relevant traits
+
+LP_noAlaska <- LP_noAlaska |> 
+  mutate(
+    Block=factor(Block),
+    cohort=factor(cohort),
+    provenance=factor(provenance)
+  )
+
+traits_var_part <- c(
+  "height", "needle_mean", "total_dry_mass", "RMF", "slenderness"
+)
+
+traits_varprop <- c(
+  "height",
+  "needle_mean",
+  "total_dry_mass",
+  "RMF",
+  "slenderness"
+)
+
+get_varprop <- function(trait, data){
+  
+  form <- as.formula(
+    paste0(
+      trait,
+      " ~ 1 + (1|Block) + (1|cohort) + (1|provenance) + (1|cohort:provenance)"
+    )
+  )
+  
+  mod <- lmer(form, data = data)
+  
+  vc <- as.data.frame(VarCorr(mod))
+  
+  total_var <- sum(vc$vcov)
+  
+  vc %>%
+    select(grp, vcov) %>%
+    mutate(
+      trait = trait,
+      proportion = vcov / total_var,
+      percent = proportion * 100
+    )
+}
+
+var_props <- map_dfr(traits_varprop, get_varprop, data = LP_noAlaska)
+
+var_props
+
+# Stacked plot
+
+ggplot(var_props,
+       aes(x = trait,
+           y = proportion,
+           fill = grp)) +
+  geom_col(
+    colour = "black",
+    linewidth = 0.5) +
+  scale_x_discrete(
+    labels=c(
+      "height" = "Height",
+      "needle_mean" = "Mean needle length",
+      "RMF" = "RMF",
+      "slenderness" = "Slenderness",
+      "total_dry_mass" = "Total dry mass"
+    )
+  ) +
+  scale_fill_manual(
+    values=c(
+      "cohort"="#6E8B3D",
+      "provenance" = "#CD2626",
+      "cohort:provenance" = "#FFC125",
+      "Block" = "#1C86EE",
+      "Residual" = "#C4C4C4"
+    )
+  ) + 
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    x = "Trait",
+    y = "Proportion of total variance",
+    fill = "Variance source"
+  ) +
+  theme_bw()
+
+unique(var_props$grp)
+
+# ARE VARIANCES THE SAME BETWEEN MINITAB AND LMER?
+
+# # per trait
+# mod_height <- lmer(
+#   height ~ 1 +
+#     (1|Block) +
+#     (1|cohort) +
+#     (1|provenance) +
+#     (1|cohort:provenance),
+#   data=LP
+# )
+# VarCorr(mod_height)
+# 
+# vc <- as.data.frame(VarCorr(mod_height))
+# vc$percent <- 100*vc$vcov / sum(vc$vcov)
+# vc[, c("grp", "vcov", "percent")]
 
 
 # coloured & patterned stacked plot
@@ -701,42 +803,40 @@ ggsave("variance_partitioning_legend.png",
 #     )
 #   )
 
-
-
-
-# no Plantation
-variance_noPlant <- minitab_noPlantation_data %>% 
-  mutate(
-    prop_var = as.numeric(prop_var),
-    prop_Std = as.numeric(prop_Std),
-    variance = as.numeric(variance),
-    perc_variance = prop_var * 100,
-    perc_Std = prop_Std * 100
-  ) %>% 
-  filter(model != "nested" & source != "Total")
-
-head(minitab_noPlantation_data)
-head(variance_noPlant)
-unique(variance_noPlant$source)
-
-ggplot(variance_noPlant, aes(x = trait, y = perc_variance, pattern = source)) +
-  geom_col_pattern(
-    aes(fill=source),
-    colour="black",
-    linewidth=0.5,
-    pattern_fill = "black",
-    pattern_colour = "black",
-    pattern_density = 0.1,
-    pattern_spacing = 0.02
-  ) +
-  scale_fill_grey(start = 0.2, end = 0.9) +
-  theme_minimal()
+# 
+# # no Plantation
+# variance_noPlant <- minitab_noPlantation_data %>% 
+#   mutate(
+#     prop_var = as.numeric(prop_var),
+#     prop_Std = as.numeric(prop_Std),
+#     variance = as.numeric(variance),
+#     perc_variance = prop_var * 100,
+#     perc_Std = prop_Std * 100
+#   ) %>% 
+#   filter(model != "nested" & source != "Total")
+# 
+# head(minitab_noPlantation_data)
+# head(variance_noPlant)
+# unique(variance_noPlant$source)
+# 
+# ggplot(variance_noPlant, aes(x = trait, y = perc_variance, pattern = source)) +
+#   geom_col_pattern(
+#     aes(fill=source),
+#     colour="black",
+#     linewidth=0.5,
+#     pattern_fill = "black",
+#     pattern_colour = "black",
+#     pattern_density = 0.1,
+#     pattern_spacing = 0.02
+#   ) +
+#   scale_fill_grey(start = 0.2, end = 0.9) +
+#   theme_minimal()
 
       
 # 4. PCA ------------------------------------------------------------------
 
 # only keep trees that have values for all traits
-traits <- c("height", "RMF", "needle_mean", "slenderness")
+traits <- c("height", "RMF", "total_dry_mass", "needle_mean", "slenderness")
 LP_pca_clean <- LP_noAlaska %>% 
   drop_na(all_of(traits))
 
@@ -747,6 +847,7 @@ pca_traits <- LP_pca_clean %>%
     height,
     needle_mean,
     RMF,
+    total_dry_mass,
     slenderness) 
 
 head(pca_traits)
@@ -844,10 +945,9 @@ anova(dispersion_cohort)
 pairwise.adonis2(
   pca_traits~cohort,
   data=pca_df)
+  #' yes -> significant?
 
-
-
-# which traits contribute to PC1 and which ones to PC2?
+# Contribution to axes: 
 pca$rotation
 
 # Are trait spaces sig different size?
