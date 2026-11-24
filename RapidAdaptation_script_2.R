@@ -200,16 +200,16 @@ ggplot(LP_all, aes(x=cohort, fill=cohort)) +
 
 # Germination rates --------------------------------------------------------
 
-germination <- read_excel("P:/07793_newLEAF/Juan Pablo/newLEAF/WP4 - Glasshouse trial & seedlots/Glasshouse trial/LPWHgermination.xlsx", sheet = "Germination")
+germination <- read_excel("P:/07793_newLEAF/Workfiles/WP4/Rapid_Adaptation/Data/Raw/Pinus_contorta/LPWHgermination.xlsx", sheet = "Germination")
 head(germination)
 
 # add cohort data
 germination <- germination |> 
   rename(Family = 'Family ID',
-         Germination_rate = 'Germination %') |> 
+         Germination_rate = 'Germination_%') |> 
   filter(Species!="Western Hemlock")
 
-cohort_lookup <- LP %>%
+cohort_lookup <- LP_all %>%
   select(Family, cohort) %>%
   distinct()
 
@@ -217,6 +217,11 @@ germination <- germination |>
   left_join(cohort_lookup |> select(Family, cohort),
             by="Family")
 
+# IMPORTANT: remove trees that weren't in trial
+germination <- germination |> 
+  filter(Family %in% LP$Family)
+
+# make sure Families match
 fam_germ <- sort(unique(germination$Family))
 fam_LP <- sort(unique(LP$Family))
 
@@ -226,9 +231,8 @@ comparison <- data.frame(
 )
 
 View(comparison)
+# some trees that germinated were not included in the trial
 
-germination <- germination |> 
-  filter(!is.na(cohort))
 
 ggplot(germination, aes(x=cohort, 
                         y=Germination_rate,
@@ -237,16 +241,30 @@ ggplot(germination, aes(x=cohort,
   stat_summary(fun.data=mean_se, geom="errorbar", width=0.2) +
   facet_wrap(~Provenance) +
   theme_bw() +
-  scale_fill_discrete(name="Cohort") +
   scale_fill_manual(
-    values = cohort_colors) +
+    values = cohort_colors,
+    name="Cohort") +
   labs(x=NULL, y = "Mean germination success (%)")
 
 ggsave("Germination_rates.png")
 
-g# average seed mass
+# average seed mass
+germination$Weight10 <- as.numeric(trimws(germination$`Weight_of_10_seed_(g)`))
+germination$weight_per_seed <- germination$Weight10/10
+
 ggplot(germination, aes(x=cohort, 
-                        y=))
+                        y=weight_per_seed,
+                        fill=cohort)) + 
+  stat_summary(fun=mean, geom="bar") +
+  stat_summary(fun.data=mean_se, geom="errorbar", width=0.2) +
+  facet_wrap(~Provenance) +
+  theme_bw() +
+  scale_fill_manual(
+    values = cohort_colors,
+    name="Cohort") +
+  labs(x=NULL, y = "Mean seed weight (g)")
+  
+ggsave("Average_seed_mass.png")
 
 
 
@@ -626,6 +644,8 @@ ggpairs(LP_noAlaska,
     # careful with changing order of cohorts
 
 # 3. Variance partitioning ---------------------------------------------------------------
+
+# own variance partitioning calculation is in R Markdown
 
 # Annika's minitab data
 
