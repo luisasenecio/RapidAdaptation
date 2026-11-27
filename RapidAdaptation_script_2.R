@@ -198,7 +198,7 @@ ggplot(LP_all, aes(x=cohort, fill=cohort)) +
   theme_minimal() +
   theme(legend.position="none")
 
-# Germination rates --------------------------------------------------------
+# Germination rates & seed weights --------------------------------------------------------
 
 germination <- read_excel("P:/07793_newLEAF/Workfiles/WP4/Rapid_Adaptation/Data/Raw/Pinus_contorta/LPWHgermination.xlsx", sheet = "Germination")
 head(germination)
@@ -266,8 +266,12 @@ ggplot(germination, aes(x=cohort,
   
 ggsave("Average_seed_mass.png")
 
+colnames(germination)
 
-
+# Statistical comparison
+seed_weight_mod <- lm(weight_per_seed~Provenance, data=germination)
+anova(seed_weight_mod)
+  #' not sig, neither with interaction or without
 
 # Survival ----------------------------------------------------------------
 
@@ -306,7 +310,6 @@ emmeans(surv_mod, pairwise~cohort, type="response")
 # origin - plantation 0.04
 # plant - regen not sig
 
-
 ggplot(prop_alive, aes(y=perc_alive, x = cohort, fill=cohort)) +
   geom_col(position="dodge") +
   theme_minimal() +
@@ -327,6 +330,169 @@ ggsave("Perc_alive.png",
        height = 120,
        units = "mm",
        dpi=300)
+
+# Mortality across years
+colnames(LP_all)
+
+trees_mortality <- LP_all %>%
+  mutate(
+    transition = case_when(
+      status_1 == "alive" & status_2 == "alive" ~ "alive both years",
+      status_1 == "alive" & status_2 == "dead" ~ "died in Year 2",
+      status_1 == "dead"  & status_2 == "dead" ~ "dead both years",
+      status_1 == "dead"  & status_2 == "alive" ~ "revived"
+    )
+  )
+
+mortality_long <- trees_mortality %>%
+  tidyr::pivot_longer(
+    cols = c(status_1, status_2),
+    names_to = "Year",
+    values_to = "Status"
+  ) %>%
+  mutate(
+    Year = dplyr::recode(
+      Year,
+      "status_1" = "Year 1",
+      "status_2" = "Year 2"
+    )
+  ) %>%
+  group_by(provenance, cohort, Year) %>%
+  summarise(
+    Mortality = mean(Status == "dead") * 100,
+    .groups = "drop"
+  )
+
+
+ggplot(mortality_long,
+       aes(x = Year,
+           y = Mortality,
+           colour = cohort,
+           group = cohort)) +
+  geom_point(size = 3) +
+  geom_line(linewidth = 1) +
+  facet_wrap(~ provenance) +
+  ylab("Mortality (%)") +
+  theme_bw()
+
+ggsave("Mortality_change.png")
+
+
+transition_summary <- trees_mortality %>%
+  count(provenance, cohort, transition) %>%
+  group_by(provenance, cohort) %>%
+  mutate(percent = n / sum(n) * 100)
+
+ggplot(transition_summary,
+       aes(x = cohort,
+           y = percent,
+           fill = transition)) +
+  geom_col() +
+  facet_wrap(~ provenance) +
+  scale_fill_manual(values = c(
+    "alive both years" = "darkgreen",
+    "died in Year 2"  = "darkred",
+    "dead both years"   = "black",
+    "revived" = "grey"
+  )) +
+  labs(
+    y="Trees (%)",
+    fill="Mortality"
+  ) +
+  theme_bw()
+
+
+# Does needle length in year 1 predict survival to year 2?
+
+LP_sub <- LP_all %>% 
+  subset(status_1 != "dead") %>% 
+  filter(!(ID %in% c("1-58", "7-70"))) |> 
+  filter(needle_mean>0)
+
+
+LP_sub$survival <- ifelse(LP_sub$status_2 == "alive",1,0)
+min(LP_sub$needle_1, na.rm=TRUE)
+
+survival_mod <- glm(
+  survival~needle_mean,
+  family=binomial,
+  data=LP_sub
+)
+
+summary(survival_mod)
+  #' longer needles = more likely to survive
+  #'  for each 1-unit increase in needle_mean (1 mm?), the odds of survival increase by about 23%.
+
+# needle length & survival different between provenances?
+survival_mod_provenance <- glm(
+  survival ~ needle_mean * provenance,
+  family = binomial,
+  data = LP_sub
+)
+summary(survival_mod_provenance)
+  #' no sig effect of provenance on needle mean or survival
+
+# needle length & survival different between cohorts?
+survival_mod_cohort <- glm(
+  survival ~ needle_mean * cohort,
+  family = binomial,
+  data = LP_sub
+)
+
+summary(survival_mod_cohort)
+
+
+# association between needle length and survival
+ggplot(LP_sub,
+       aes(x = factor(survival),
+           y = needle_mean)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(width = 0.15, alpha = 0.5) +
+  labs(
+    x = "Year 2 survival",
+    y = "Mean needle length"
+  ) +
+  scale_x_discrete(
+    labels = c("Dead", "Alive")
+  ) +
+  theme_bw()
+
+# provenance / cohort
+ggplot(LP_sub,
+       aes(x = status_2,
+           y = needle_mean,
+           fill = cohort)) +
+  geom_boxplot(outlier.shape=NA) +
+  labs(
+    x = "Year 2 status",
+    y = "Mean needle length"
+  ) +
+  theme_bw()
+
+# pairwise tests between cohorts
+   #' does needle length between dead and alive trees differ between cohorts?
+
+needle_mod <- lm(needle_mean~status_2*cohort,
+                 data=LP_sub)
+emmeans(needle_mod, pairwise~status_2 | cohort)
+emmeans(needle_mod, pairwise ~ cohort | status_2)
+
+
+# does the effect of tree family of provenance is confounding the effect of cohort and needle length on survival?
+
+mod_family_prov <- glmer(
+  survival ~ needle_mean * cohort +
+    provenance +
+    (1 | provenance:Family),
+  family = binomial,
+  data = LP_sub
+)
+summary(mod_family_prov)
+
+
+LP_sub %>%
+  distinct(Family, provenance) %>%
+  count(Family)
 
 # 1a Trait distributions ------------------------------------------------------
 
